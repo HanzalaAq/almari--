@@ -1,42 +1,101 @@
 import React from 'react';
+import { Pressable, Text, ViewStyle, TextStyle } from 'react-native';
 
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps {
   variant?: 'primary' | 'secondary' | 'outline';
   size?: 'sm' | 'md' | 'lg';
   children: React.ReactNode;
+  onPress?: () => void;
+  disabled?: boolean;
+  style?: ViewStyle;
+  textStyle?: TextStyle;
 }
 
 export default function Button({
   variant = 'primary',
   size = 'md',
-  className = '',
   children,
-  ...props
+  onPress,
+  disabled = false,
+  style,
+  textStyle,
 }: ButtonProps) {
-  const baseStyles =
-    'font-medium rounded-xl transition-all duration-200 ease-out focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none active:scale-[0.97] cursor-pointer';
-
-  const variantStyles = {
-    primary:
-      'bg-brand text-white hover:bg-brand-hover hover:shadow-lg hover:shadow-brand/20 focus:ring-brand',
-    secondary:
-      'bg-gray-100 text-foreground hover:bg-gray-200 focus:ring-gray-300',
-    outline:
-      'border-2 border-brand text-brand hover:bg-brand hover:text-white focus:ring-brand hover:shadow-lg hover:shadow-brand/20',
+  const baseStyles: ViewStyle = {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    opacity: disabled ? 0.5 : 1,
   };
 
-  const sizeStyles = {
-    sm: 'px-4 py-1.5 text-sm',
-    md: 'px-5 py-2.5 text-base',
-    lg: 'px-8 py-3.5 text-lg',
+  const variantStyles: Record<string, ViewStyle> = {
+    primary: {
+      backgroundColor: '#FF7A1A',
+    },
+    secondary: {
+      backgroundColor: '#F3F4F6',
+    },
+    outline: {
+      borderWidth: 2,
+      borderColor: '#FF7A1A',
+      backgroundColor: 'transparent',
+    },
+  };
+
+  const sizeStyles: Record<string, ViewStyle> = {
+    sm: {
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+    },
+    md: {
+      paddingHorizontal: 20,
+      paddingVertical: 10,
+    },
+    lg: {
+      paddingHorizontal: 32,
+      paddingVertical: 14,
+    },
+  };
+
+  const textVariantStyles: Record<string, TextStyle> = {
+    primary: {
+      color: '#FFFFFF',
+    },
+    secondary: {
+      color: '#1A1A1A',
+    },
+    outline: {
+      color: '#FF7A1A',
+    },
+  };
+
+  const textSizeStyles: Record<string, TextStyle> = {
+    sm: {
+      fontSize: 14,
+    },
+    md: {
+      fontSize: 16,
+    },
+    lg: {
+      fontSize: 18,
+    },
   };
 
   return (
-    <button
-      className={`${baseStyles} ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
-      {...props}
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={[baseStyles, variantStyles[variant], sizeStyles[size], style]}
     >
-      {children}
-    </button>
+      <Text
+        style={[
+          { fontWeight: '600' },
+          textVariantStyles[variant],
+          textSizeStyles[size],
+          textStyle,
+        ]}
+      >
+        {children}
+      </Text>
+    </Pressable>
   );
 }

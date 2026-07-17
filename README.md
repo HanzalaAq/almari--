@@ -1,13 +1,19 @@
 # Almari - Pre-Loved Fashion Marketplace
 
-Almari is a Pakistani marketplace for buying, selling, renting, and exchanging pre-loved clothing, similar to Vinted. This is Phase 3 (Complete) of a 3-phase project.
+Almari is a Pakistani marketplace for buying, selling, renting, and exchanging pre-loved clothing, similar to Vinted. Built with React Native + Expo for iOS, Android, and Web.
 
 ## Tech Stack
 
-- **Frontend**: Next.js 14+ (App Router), TypeScript, Tailwind CSS
-- **Backend & Database**: Supabase (Postgres, Auth, Storage, Realtime)
-- **Auth**: Supabase Auth with phone number + OTP sign-in
-- **Deployment**: Vercel (frontend), Supabase Cloud (backend)
+- **Framework**: Expo SDK 51+ with Expo Router (file-based routing)
+- **Language**: TypeScript
+- **Styling**: NativeWind v4 (Tailwind CSS for React Native)
+- **Backend**: Supabase (Postgres, Auth, Realtime, Edge Functions)
+- **Image Storage**: Cloudflare R2 (S3-compatible storage)
+- **Image Serving**: Cloudflare Images (CDN + auto-resize)
+- **State**: Zustand
+- **Data Fetching**: TanStack Query (React Query)
+- **App Deployment**: Expo EAS Build
+- **Web Deployment**: Vercel (Expo web export)
 
 ## Phase 1, 2 & 3 Features (Complete MVP)
 
@@ -122,6 +128,8 @@ Almari is a Pakistani marketplace for buying, selling, renting, and exchanging p
 
 - Node.js 18+ installed
 - A Supabase account (free tier works)
+- Cloudflare R2 account (for image storage)
+- Expo CLI installed: `npm install -g expo-cli`
 
 ### 2. Supabase Project Setup
 
@@ -129,17 +137,30 @@ Almari is a Pakistani marketplace for buying, selling, renting, and exchanging p
 2. Wait for your project to be ready (2-3 minutes)
 3. Navigate to Project Settings → API
 4. Copy your project URL and anon key
+5. Enable Realtime for the `messages` table in Database → Replication
 
-### 3. Environment Variables
+### 3. Cloudflare R2 Setup
 
-Create a `.env.local` file in the project root:
+1. Create a Cloudflare R2 bucket named `almari-images`
+2. Generate R2 API keys (Access Key ID and Secret Access Key)
+3. Make the bucket public for image serving
+4. Note your R2 account ID and public URL
+
+### 4. Environment Variables
+
+Create a `.env` file in the project root:
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+EXPO_PUBLIC_SUPABASE_URL=your-supabase-project-url
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+EXPO_PUBLIC_R2_ACCOUNT_ID=your-r2-account-id
+EXPO_PUBLIC_R2_ACCESS_KEY_ID=your-r2-access-key-id
+EXPO_PUBLIC_R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
+EXPO_PUBLIC_R2_BUCKET_NAME=almari-images
+EXPO_PUBLIC_R2_PUBLIC_URL=your-r2-public-url
 ```
 
-### 4. Database Setup
+### 5. Database Setup
 
 Run the SQL migrations in order:
 
@@ -153,34 +174,6 @@ Run the SQL migrations in order:
 8. **Phase 3 Order Updates**: Copy and run `supabase/migrations/007_phase3_order_updates.sql` (adds rental fields, auto-release logic)
 9. **Conversations Function**: Copy and run `supabase/migrations/008_conversations_function.sql` (for messages page)
 
-### 5. Storage Setup
-
-#### Profile Pictures Bucket
-
-1. Go to Supabase Dashboard → Storage
-2. Create a new bucket named `profile-pictures`
-3. Make it public (for profile picture URLs to work)
-4. Enable RLS on the bucket with policies allowing users to upload their own pictures
-
-#### Listing Images Bucket (Required for Phase 2)
-
-1. Go to Supabase Dashboard → Storage
-2. Create a new bucket named `listing-images`
-3. Make it public (for listing image URLs to work)
-4. Enable RLS on the bucket with policies allowing authenticated users to upload images
-5. Example RLS policy for uploads:
-   ```sql
-   CREATE POLICY "Users can upload listing images"
-   ON storage.objects FOR INSERT
-   TO authenticated
-   WITH CHECK (bucket_id = 'listing-images');
-   
-   CREATE POLICY "Public can view listing images"
-   ON storage.objects FOR SELECT
-   TO public
-   USING (bucket_id = 'listing-images');
-   ```
-
 ### 6. Install Dependencies
 
 ```bash
@@ -189,11 +182,25 @@ npm install
 
 ### 7. Run the Development Server
 
+**For iOS:**
 ```bash
-npm run dev
+npm run ios
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+**For Android:**
+```bash
+npm run android
+```
+
+**For Web:**
+```bash
+npm run web
+```
+
+**For all platforms (Expo Go):**
+```bash
+npm start
+```
 
 ## Testing the Application
 
@@ -376,25 +383,41 @@ almari-web/
 
 ## Deployment
 
-### Vercel (Frontend)
+### iOS & Android (EAS Build)
+
+1. Install EAS CLI: `npm install -g eas-cli`
+2. Login to Expo: `eas login`
+3. Configure project: `eas build:configure`
+4. Build for iOS: `eas build --platform ios`
+5. Build for Android: `eas build --platform android`
+6. Submit to app stores: `eas submit --platform ios` / `eas submit --platform android`
+
+### Web (Vercel)
 
 1. Push your code to GitHub
 2. Import the project in Vercel
-3. Add environment variables in Vercel dashboard
-4. Deploy
+3. Add environment variables in Vercel dashboard (all EXPO_PUBLIC_* variables)
+4. Vercel will automatically detect Expo framework and build
+5. Deploy
 
 ### Supabase (Backend)
 
 Your Supabase project is already hosted. Just ensure:
 - RLS policies are enabled
-- Storage buckets are configured
+- Realtime is enabled for messages table
 - Environment variables point to your production Supabase project
+
+### Cloudflare R2 (Image Storage)
+
+Your Cloudflare R2 bucket is already configured. Just ensure:
+- Bucket is public for image serving
+- Environment variables point to your production R2 account
 
 ## Troubleshooting
 
 **OTP not received**: In development, check Supabase Dashboard → Auth → Users to see the verification code in logs.
 
-**Images not loading**: Ensure the `profile-pictures` and `listing-images` storage buckets are public and RLS policies allow read access.
+**Images not loading**: Ensure Cloudflare R2 bucket is public and environment variables are correctly set.
 
 **Infinite scroll not working**: Check browser console for errors. Ensure Supabase connection is working and listings exist in the database.
 

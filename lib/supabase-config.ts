@@ -1,4 +1,4 @@
 export const supabaseConfig = {
-  url: process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+  url: process.env.EXPO_PUBLIC_SUPABASE_URL || '',
+  anonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
 } as const;
