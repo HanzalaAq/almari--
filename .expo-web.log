@@ -1,0 +1,16 @@
+
+> almari-expo@0.1.0 web
+> expo start --web --port 8082
+
+env: load .env.local
+env: export EXPO_PUBLIC_SUPABASE_ANON_KEY EXPO_PUBLIC_SUPABASE_URL
+Starting project at C:\Users\Hanzala\OneDrive\Desktop\almari-web
+Starting Metro Bundler
+
+Waiting on http://localhost:8082
+
+An update for expo is available: 57.0.4 → ~57.0.7
+8 other packages may need updating. Run npx expo install --check for details.
+Logs for your project will appear below.
+› Detected a change in metro.config.js. Restart the server to see the new results.
+› Detected a change in babel.config.js. Restart the server to see the new results. You may need to clear the bundler cache with the --clear flag for your changes to take effect.

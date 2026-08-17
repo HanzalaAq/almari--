@@ -1,0 +1,31 @@
+{
+  "buildCommand": "expo export -p web",
+  "outputDirectory": "dist",
+  "devCommand": "expo start --web",
+  "installCommand": "npm install",
+  "framework": "expo",
+  "regions": ["iad1"],
+  "env": {
+    "EXPO_PUBLIC_SUPABASE_URL": {
+      "description": "Supabase project URL"
+    },
+    "EXPO_PUBLIC_SUPABASE_ANON_KEY": {
+      "description": "Supabase anonymous key"
+    },
+    "EXPO_PUBLIC_R2_ACCOUNT_ID": {
+      "description": "Cloudflare R2 account ID"
+    },
+    "EXPO_PUBLIC_R2_ACCESS_KEY_ID": {
+      "description": "Cloudflare R2 access key ID"
+    },
+    "EXPO_PUBLIC_R2_SECRET_ACCESS_KEY": {
+      "description": "Cloudflare R2 secret access key"
+    },
+    "EXPO_PUBLIC_R2_BUCKET_NAME": {
+      "description": "Cloudflare R2 bucket name"
+    },
+    "EXPO_PUBLIC_R2_PUBLIC_URL": {
+      "description": "Cloudflare R2 public URL"
+    }
+  }
+}
