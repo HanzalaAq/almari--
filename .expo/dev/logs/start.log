@@ -2136,3 +2136,37 @@
 {"_e":"metro:client_log","_t":1786950421398,"level":"warn","data":["\"shadow*\" style props are deprecated. Use \"boxShadow\"."]}
 {"_e":"metro:client_log","_t":1786950421549,"level":"warn","data":["Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md"]}
 {"_e":"metro:client_log","_t":1786950421550,"level":"warn","data":["Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md"]}
+{"_e":"root:init","_t":1786951277084,"format":"v0-jsonl","version":"57.0.6"}
+{"_e":"env:mode","_t":1786951277085,"nodeEnv":"development","babelEnv":"development","mode":"development"}
+{"_e":"env:load","_t":1786951277087,"mode":"development","files":["../..\\..\\.env"],"env":{"EXPO_PUBLIC_R2_ACCESS_KEY_ID":"your-r2-access-key-id","EXPO_PUBLIC_R2_ACCOUNT_ID":"your-r2-account-id","EXPO_PUBLIC_R2_BUCKET_NAME":"almari-images","EXPO_PUBLIC_R2_PUBLIC_URL":"https://your-r2-public-url","EXPO_PUBLIC_R2_SECRET_ACCESS_KEY":"your-r2-secret-access-key","EXPO_PUBLIC_SUPABASE_ANON_KEY":"your-anon-key","EXPO_PUBLIC_SUPABASE_URL":"https://your-project.supabase.co"}}
+{"_e":"devserver:start","_t":1786951277339,"mode":"development","web":true,"baseUrl":"","asyncRoutes":false,"routerRoot":"../..\\..\\app","serverComponents":false,"serverActions":false,"serverRendering":false,"apiRoutes":false,"exporting":false}
+{"_e":"metro:config","_t":1786951277851,"serverRoot":"../..\\..","projectRoot":"../..\\..","exporting":false,"flags":{"autolinkingModuleResolution":false,"serverActions":false,"serverComponents":false,"reactCompiler":false,"optimizeGraph":false,"treeshaking":false,"logbox":false}}
+{"_e":"expo:dev-tools-plugin:load","_t":1786951278070,"plugins":[]}
+{"_e":"metro:instantiate","_t":1786951282901,"atlas":false,"workers":8,"host":"::","port":8081}
+{"_e":"metro:bundling:started","_t":1786951287045,"id":"1","platform":"web","environment":null,"entry":"node_modules\\expo-router\\entry.js"}
+{"_e":"metro:bundling:progress","_t":1786951287046,"id":"1","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1786951287058,"id":"1","progress":0,"total":1,"current":0}
+{"_e":"metro:bundling:progress","_t":1786951287157,"id":"1","progress":0.16637811634349028,"total":152,"current":62}
+{"_e":"metro:bundling:progress","_t":1786951287257,"id":"1","progress":0.19689622729293535,"total":311,"current":138}
+{"_e":"metro:bundling:progress","_t":1786951287357,"id":"1","progress":0.35069004945393634,"total":461,"current":273}
+{"_e":"metro:bundling:progress","_t":1786951287466,"id":"1","progress":0.3539202132344775,"total":511,"current":304}
+{"_e":"metro:bundling:progress","_t":1786951287572,"id":"1","progress":0.4403911647042702,"total":547,"current":363}
+{"_e":"metro:bundling:progress","_t":1786951287668,"id":"1","progress":0.4409296741770289,"total":631,"current":419}
+{"_e":"metro:bundling:progress","_t":1786951287779,"id":"1","progress":0.5386173994731898,"total":699,"current":513}
+{"_e":"metro:bundling:progress","_t":1786951287878,"id":"1","progress":0.5985772403849499,"total":813,"current":629}
+{"_e":"metro:bundling:progress","_t":1786951287979,"id":"1","progress":0.6704454591364364,"total":872,"current":714}
+{"_e":"metro:bundling:progress","_t":1786951288080,"id":"1","progress":0.832504510793949,"total":902,"current":823}
+{"_e":"metro:bundling:progress","_t":1786951288181,"id":"1","progress":0.832504510793949,"total":970,"current":865}
+{"_e":"metro:bundling:progress","_t":1786951288281,"id":"1","progress":0.8985064317010774,"total":998,"current":946}
+{"_e":"metro:bundling:progress","_t":1786951288387,"id":"1","progress":0.8985064317010774,"total":1079,"current":1004}
+{"_e":"metro:bundling:progress","_t":1786951288488,"id":"1","progress":0.9730833351693952,"total":1107,"current":1092}
+{"_e":"metro:bundling:progress","_t":1786951288590,"id":"1","progress":0.9838640029619524,"total":1111,"current":1102}
+{"_e":"metro:bundling:progress","_t":1786951288699,"id":"1","progress":0.9892280857248642,"total":1111,"current":1105}
+{"_e":"metro:bundling:progress","_t":1786951288904,"id":"1","progress":0.9910193539605985,"total":1111,"current":1106}
+{"_e":"metro:bundling:progress","_t":1786951289014,"id":"1","progress":0.9946067514042134,"total":1111,"current":1108}
+{"_e":"metro:bundling:progress","_t":1786951289127,"id":"1","progress":0.999,"total":1111,"current":1111}
+{"_e":"metro:bundling:done","_t":1786951289168,"id":"1","total":1111,"ms":2122.535}
+{"_e":"metro:client_log","_t":1786951289461,"level":"info","data":["%cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools","font-weight:bold"]}
+{"_e":"metro:client_log","_t":1786951289462,"level":"log","data":["Running application \"main\" with appParams:\n","{\"hydrate\": undefined, \"rootTag\": \"#root\"}","\nDevelopment-level warnings: ON.\nPerformance optimizations: OFF."]}
+{"_e":"metro:client_log","_t":1786951289545,"level":"warn","data":["\"shadow*\" style props are deprecated. Use \"boxShadow\"."]}
+{"_e":"metro:client_log","_t":1786951289655,"level":"warn","data":["Animated: `useNativeDriver` is not supported because the native animated module is missing. Falling back to JS-based animation. To resolve this, add `RCTAnimation` module to this app, or remove `useNativeDriver`. Make sure to run `bundle exec pod install` first. Read more about autolinking: https://github.com/react-native-community/cli/blob/master/docs/autolinking.md"]}
