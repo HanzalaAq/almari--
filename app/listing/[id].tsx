@@ -1,351 +1,47 @@
-import { View, Text, ScrollView, Pressable, Image, Platform, Alert } from 'react-native';
-import { useState, useEffect } from 'react';
-import { useLocalSearchParams, useRouter, Link } from 'expo-router';
+import { View, Text, ScrollView, Pressable, Image, Platform, Alert, TextInput, Modal, StyleSheet, useWindowDimensions } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../lib/supabase/client';
 import { useAuthStore } from '../../store/useAuthStore';
+import { useFavoritesStore } from '../../store/useFavoritesStore';
+import { useRecentlyViewedStore } from '../../store/useRecentlyViewedStore';
+import { WebNavbar } from '../../components/layout/WebNavbar';
+import { WebFooter } from '../../components/layout/WebFooter';
 
-interface Listing {
-  id: string;
-  title: string;
-  description: string;
-  price: number;
-  rent_price?: number;
-  images: string[];
-  city: string;
-  condition: string;
-  category: string;
-  size?: string;
-  brand?: string;
-  is_buyable: boolean;
-  is_rentable: boolean;
-  is_exchangeable: boolean;
-  seller_id: string;
-  created_at: string;
-}
-
-interface Seller {
-  id: string;
-  name: string;
-  city: string;
-  photo_url?: string;
-  rating?: number;
-}
+type Listing = { id: string; title: string; description?: string; price: number; images: string[]; city: string; condition: string; category: string; size?: string; brand?: string; is_rentable: boolean; rental_price_per_day?: number; is_exchangeable: boolean; user_id: string; created_at: string };
+type Seller = { id: string; name?: string; city?: string; photo_url?: string; rating?: number };
+const money = (amount: number) => `PKR ${Number(amount || 0).toLocaleString()}`;
 
 export default function ListingDetailScreen() {
-  const { id } = useLocalSearchParams();
-  const router = useRouter();
-  const { user } = useAuthStore();
-  const [selectedImage, setSelectedImage] = useState(0);
-  const [activeTab, setActiveTab] = useState<'buy' | 'rent' | 'exchange'>('buy');
-
-  const { data: listing, isLoading } = useQuery({
-    queryKey: ['listing', id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('listings')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
-      return data as Listing;
-    },
-  });
-
-  const { data: seller } = useQuery({
-    queryKey: ['seller', listing?.seller_id],
-    queryFn: async () => {
-      if (!listing?.seller_id) return null;
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', listing.seller_id)
-        .single();
-
-      if (error) throw error;
-      return data as Seller;
-    },
-    enabled: !!listing?.seller_id,
-  });
-
-  useEffect(() => {
-    if (listing) {
-      if (listing.is_buyable) setActiveTab('buy');
-      else if (listing.is_rentable) setActiveTab('rent');
-      else if (listing.is_exchangeable) setActiveTab('exchange');
-    }
-  }, [listing]);
-
-  const handleBuy = () => {
-    if (!user) {
-      Alert.alert('Login Required', 'Please login to purchase items');
-      router.push('/(auth)/login');
-      return;
-    }
-    router.push(`/listing/${id}/buy`);
-  };
-
-  const handleRent = () => {
-    if (!user) {
-      Alert.alert('Login Required', 'Please login to rent items');
-      router.push('/(auth)/login');
-      return;
-    }
-    router.push(`/listing/${id}/rent`);
-  };
-
-  const handleExchange = () => {
-    if (!user) {
-      Alert.alert('Login Required', 'Please login to exchange items');
-      router.push('/(auth)/login');
-      return;
-    }
-    router.push(`/listing/${id}/exchange`);
-  };
-
-  const handleMessage = () => {
-    if (!user) {
-      Alert.alert('Login Required', 'Please login to message seller');
-      router.push('/(auth)/login');
-      return;
-    }
-    router.push(`/messages?user=${listing?.seller_id}`);
-  };
-
-  if (isLoading) {
-    return (
-      <View className="flex-1 items-center justify-center">
-        <Text className="text-text-muted">Loading...</Text>
+  const { id } = useLocalSearchParams<{ id: string }>(); const router = useRouter(); const { user } = useAuthStore(); const { isFavorite, addFavorite, removeFavorite } = useFavoritesStore(); const { addItem } = useRecentlyViewedStore();
+  const { width } = useWindowDimensions(); const compact = width < 860;
+  const [imageIndex, setImageIndex] = useState(0); const [offerOpen, setOfferOpen] = useState(false); const [offer, setOffer] = useState(''); const [sending, setSending] = useState(false);
+  const { data: listing, isLoading } = useQuery({ queryKey: ['listing', id], queryFn: async () => { const { data, error } = await supabase.from('listings').select('*').eq('id', id).single(); if (error) throw error; return data as Listing; } });
+  const { data: seller } = useQuery({ queryKey: ['listing-seller', listing?.user_id], enabled: !!listing?.user_id, queryFn: async () => { const { data, error } = await supabase.from('users').select('id,name,city,photo_url,rating').eq('id', listing!.user_id).single(); if (error) throw error; return data as Seller; } });
+  const { data: related = [] } = useQuery({ queryKey: ['listing-related', listing?.category, id], enabled: !!listing?.category, queryFn: async () => { const { data, error } = await supabase.from('listings').select('id,title,price,images,city,condition').eq('status', 'active').eq('category', listing!.category).neq('id', id).limit(4); if (error) throw error; return data as Listing[]; } });
+  useEffect(() => { if (listing) addItem({ id: listing.id, title: listing.title, price: listing.price, image: listing.images?.[0] || '' }); }, [listing, addItem]);
+  if (isLoading) return <View style={styles.loading}><Text style={styles.muted}>Loading item…</Text></View>;
+  if (!listing) return <View style={styles.loading}><Text style={styles.muted}>This item is no longer available.</Text></View>;
+  const own = user?.id === listing.user_id; const favourite = isFavorite(listing.id); const images = listing.images?.length ? listing.images : ['https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=900&q=80'];
+  const requireLogin = (callback: () => void) => { if (!user) { Alert.alert('Sign in required', 'Sign in to continue with this item.'); router.push('/(auth)/login'); return; } callback(); };
+  const sendOffer = async () => { const amount = Number(offer); if (!amount || amount <= 0 || amount >= listing.price) { Alert.alert('Enter a valid offer', `Your offer must be less than ${money(listing.price)}.`); return; } setSending(true); const { error } = await supabase.from('offers').insert({ listing_id: listing.id, buyer_id: user!.id, amount }); setSending(false); if (error) { Alert.alert('Could not send offer', error.message); return; } setOfferOpen(false); setOffer(''); Alert.alert('Offer sent', 'The seller will be notified.'); };
+  return <View style={styles.screen}>{Platform.OS === 'web' && <WebNavbar />}<ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+    <View style={styles.breadcrumb}><Link href="/" asChild><Pressable><Text style={styles.breadcrumbLink}>Home</Text></Pressable></Link><Ionicons name="chevron-forward" size={14} color="#849292" /><Link href={`/search?q=${encodeURIComponent(listing.category)}`} asChild><Pressable><Text style={styles.breadcrumbLink}>{listing.category}</Text></Pressable></Link><Ionicons name="chevron-forward" size={14} color="#849292" /><Text style={styles.breadcrumbCurrent} numberOfLines={1}>{listing.title}</Text></View>
+    <View style={[styles.top, compact && styles.topCompact]}>
+      <View style={styles.gallery}><View style={styles.mainImage}><Image source={{ uri: images[imageIndex] }} style={styles.image} resizeMode="contain" /><Pressable accessibilityRole="button" accessibilityLabel={favourite ? 'Remove from favourites' : 'Add to favourites'} onPress={() => favourite ? removeFavorite(listing.id) : addFavorite(listing.id)} style={styles.heart}><Ionicons name={favourite ? 'heart' : 'heart-outline'} color={favourite ? '#D64C5B' : '#1E3030'} size={22} /></Pressable>{images.length > 1 && <View style={styles.counter}><Text style={styles.counterText}>{imageIndex + 1}/{images.length}</Text></View>}</View>
+        {images.length > 1 && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbs}>{images.map((uri, index) => <Pressable key={`${uri}-${index}`} onPress={() => setImageIndex(index)} style={[styles.thumb, index === imageIndex && styles.thumbActive]}><Image source={{ uri }} style={styles.thumbImage} /></Pressable>)}</ScrollView>}
       </View>
-    );
-  }
-
-  if (!listing) {
-    return (
-      <View className="flex-1 items-center justify-center">
-        <Text className="text-text-muted">Listing not found</Text>
+      <View style={styles.panel}><View style={styles.titleRow}><View style={styles.titleCopy}><Text style={styles.price}>{money(listing.price)}</Text><Text style={styles.title}>{listing.title}</Text><Text style={styles.subtle}>{listing.brand ? `${listing.brand} · ` : ''}{listing.size || 'One size'} · {listing.condition}</Text></View></View>
+        <View style={styles.details}><Detail label="Brand" value={listing.brand || 'Not specified'} /><Detail label="Size" value={listing.size || 'Not specified'} /><Detail label="Condition" value={listing.condition} /><Detail label="Location" value={listing.city} /></View>
+        {!own ? <><Pressable onPress={() => requireLogin(() => router.push(`/listing/${listing.id}/buy`))} style={styles.buy}><Text style={styles.buyText}>Buy now · {money(listing.price)}</Text></Pressable><Pressable onPress={() => requireLogin(() => setOfferOpen(true))} style={styles.offer}><Text style={styles.offerText}>Make an offer</Text></Pressable><Pressable onPress={() => requireLogin(() => router.push(`/messages?user=${listing.user_id}`))} style={styles.message}><Ionicons name="chatbubble-outline" color="#007782" size={18} /><Text style={styles.messageText}>Ask seller</Text></Pressable></> : <Link href={`/listing/${listing.id}/edit`} asChild><Pressable style={styles.offer}><Text style={styles.offerText}>Edit your listing</Text></Pressable></Link>}
+        <View style={styles.protection}><Ionicons name="shield-checkmark-outline" size={20} color="#007782" /><View style={styles.protectionCopy}><Text style={styles.protectionTitle}>Buyer Protection</Text><Text style={styles.protectionText}>Your payment stays protected until your order is delivered and checked.</Text></View></View>
       </View>
-    );
-  }
-
-  const isOwner = user?.id === listing.seller_id;
-
-  return (
-    <ScrollView className="flex-1 bg-white">
-      {/* Image Gallery */}
-      <View className="relative">
-        <Image
-          source={{ uri: listing.images[selectedImage] }}
-          className="w-full h-96"
-          resizeMode="cover"
-        />
-        {listing.images.length > 1 && (
-          <View className="absolute bottom-4 left-0 right-0 flex flex-row justify-center gap-2">
-            {listing.images.map((_, index) => (
-              <Pressable
-                key={index}
-                onPress={() => setSelectedImage(index)}
-                className={`w-2 h-2 rounded-full ${
-                  selectedImage === index ? 'bg-brand' : 'bg-white'
-                }`}
-              />
-            ))}
-          </View>
-        )}
-      </View>
-
-      {/* Thumbnail Strip */}
-      {listing.images.length > 1 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="p-4 bg-white">
-          {listing.images.map((image, index) => (
-            <Pressable
-              key={index}
-              onPress={() => setSelectedImage(index)}
-              className={`mr-2 rounded-lg overflow-hidden border-2 ${
-                selectedImage === index ? 'border-brand' : 'border-transparent'
-              }`}
-            >
-              <Image source={{ uri: image }} className="w-20 h-20" resizeMode="cover" />
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
-
-      <View className="p-6">
-        {/* Title & Price */}
-        <View className="mb-4">
-          <Text className="text-2xl font-bold text-text-primary mb-2">{listing.title}</Text>
-          <Text className="text-3xl font-bold text-brand">PKR {listing.price.toLocaleString()}</Text>
-        </View>
-
-        {/* Tags */}
-        <View className="flex flex-row flex-wrap gap-2 mb-4">
-          <Text className="bg-brand-light text-brand px-3 py-1 rounded-full text-sm">
-            {listing.condition}
-          </Text>
-          <Text className="bg-gray-100 text-text-secondary px-3 py-1 rounded-full text-sm">
-            {listing.category}
-          </Text>
-          {listing.size && (
-            <Text className="bg-gray-100 text-text-secondary px-3 py-1 rounded-full text-sm">
-              Size: {listing.size}
-            </Text>
-          )}
-          {listing.brand && (
-            <Text className="bg-gray-100 text-text-secondary px-3 py-1 rounded-full text-sm">
-              {listing.brand}
-            </Text>
-          )}
-          <Text className="bg-gray-100 text-text-secondary px-3 py-1 rounded-full text-sm">
-            {listing.city}
-          </Text>
-        </View>
-
-        {/* Description */}
-        <View className="mb-6">
-          <Text className="text-lg font-semibold text-text-primary mb-2">Description</Text>
-          <Text className="text-text-secondary leading-relaxed">{listing.description}</Text>
-        </View>
-
-        {/* Seller Info */}
-        {seller && (
-          <View className="bg-gray-50 rounded-xl p-4 mb-6">
-            <View className="flex flex-row items-center mb-3">
-              <View className="w-12 h-12 bg-brand rounded-full items-center justify-center mr-3">
-                <Text className="text-white font-bold text-lg">
-                  {seller.name.charAt(0).toUpperCase()}
-                </Text>
-              </View>
-              <View className="flex-1">
-                <Text className="font-semibold text-text-primary">{seller.name}</Text>
-                <Text className="text-text-secondary text-sm">{seller.city}</Text>
-              </View>
-              {seller.rating && (
-                <Text className="text-brand font-semibold">★ {seller.rating.toFixed(1)}</Text>
-              )}
-            </View>
-            <Link href={`/profile/${seller.id}`} asChild>
-              <Pressable className="bg-white border border-gray-300 rounded-lg py-2 items-center">
-                <Text className="text-text-primary font-medium">View Profile</Text>
-              </Pressable>
-            </Link>
-          </View>
-        )}
-
-        {/* Transaction Modes */}
-        <View className="mb-6">
-          <View className="flex flex-row border-b border-gray-200 mb-4">
-            {listing.is_buyable && (
-              <Pressable
-                onPress={() => setActiveTab('buy')}
-                className={`flex-1 pb-3 text-center ${
-                  activeTab === 'buy' ? 'border-b-2 border-brand' : ''
-                }`}
-              >
-                <Text
-                  className={`font-medium ${activeTab === 'buy' ? 'text-brand' : 'text-text-muted'}`}
-                >
-                  Buy
-                </Text>
-              </Pressable>
-            )}
-            {listing.is_rentable && (
-              <Pressable
-                onPress={() => setActiveTab('rent')}
-                className={`flex-1 pb-3 text-center ${
-                  activeTab === 'rent' ? 'border-b-2 border-brand' : ''
-                }`}
-              >
-                <Text
-                  className={`font-medium ${activeTab === 'rent' ? 'text-brand' : 'text-text-muted'}`}
-                >
-                  Rent
-                </Text>
-              </Pressable>
-            )}
-            {listing.is_exchangeable && (
-              <Pressable
-                onPress={() => setActiveTab('exchange')}
-                className={`flex-1 pb-3 text-center ${
-                  activeTab === 'exchange' ? 'border-b-2 border-brand' : ''
-                }`}
-              >
-                <Text
-                  className={`font-medium ${
-                    activeTab === 'exchange' ? 'text-brand' : 'text-text-muted'
-                  }`}
-                >
-                  Exchange
-                </Text>
-              </Pressable>
-            )}
-          </View>
-
-          <View className="bg-gray-50 rounded-xl p-4">
-            {activeTab === 'buy' && (
-              <View>
-                <Text className="text-text-secondary mb-2">Purchase this item</Text>
-                <Text className="text-2xl font-bold text-brand mb-4">
-                  PKR {listing.price.toLocaleString()}
-                </Text>
-                <Pressable onPress={handleBuy} className="bg-brand rounded-full py-3 items-center">
-                  <Text className="text-white font-semibold text-lg">Buy Now</Text>
-                </Pressable>
-              </View>
-            )}
-            {activeTab === 'rent' && (
-              <View>
-                <Text className="text-text-secondary mb-2">Rent this item</Text>
-                <Text className="text-2xl font-bold text-brand mb-4">
-                  PKR {listing.rent_price?.toLocaleString() || 'N/A'}/day
-                </Text>
-                <Pressable onPress={handleRent} className="bg-brand rounded-full py-3 items-center">
-                  <Text className="text-white font-semibold text-lg">Rent This</Text>
-                </Pressable>
-              </View>
-            )}
-            {activeTab === 'exchange' && (
-              <View>
-                <Text className="text-text-secondary mb-2">Exchange with your item</Text>
-                <Pressable onPress={handleExchange} className="bg-brand rounded-full py-3 items-center">
-                  <Text className="text-white font-semibold text-lg">Propose Exchange</Text>
-                </Pressable>
-              </View>
-            )}
-          </View>
-        </View>
-
-        {/* Message Seller */}
-        {!isOwner && (
-          <Pressable
-            onPress={handleMessage}
-            className="bg-white border-2 border-brand rounded-full py-3 items-center mb-6"
-          >
-            <Text className="text-brand font-semibold text-lg">Message Seller</Text>
-          </Pressable>
-        )}
-
-        {/* Owner Actions */}
-        {isOwner && (
-          <View className="flex flex-row gap-4">
-            <Link href={`/listing/${id}/edit`} asChild>
-              <Pressable className="flex-1 bg-gray-100 rounded-full py-3 items-center">
-                <Text className="text-text-primary font-semibold">Edit Listing</Text>
-              </Pressable>
-            </Link>
-            <Pressable
-              onPress={() => Alert.alert('Delete', 'Are you sure?', [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Delete', style: 'destructive' },
-              ])}
-              className="flex-1 bg-red-100 rounded-full py-3 items-center"
-            >
-              <Text className="text-red-600 font-semibold">Delete</Text>
-            </Pressable>
-          </View>
-        )}
-      </View>
-    </ScrollView>
-  );
+    </View>
+    <View style={[styles.lower, compact && styles.lowerCompact]}><View style={styles.description}><Text style={styles.sectionTitle}>Item details</Text><Text style={styles.descriptionText}>{listing.description || 'The seller has not added a description for this item yet.'}</Text><Text style={styles.listed}>Listed {new Date(listing.created_at).toLocaleDateString()}</Text></View><View style={styles.sellerCard}><Text style={styles.sectionTitle}>Seller</Text><Link href={`/profile/${seller?.id || listing.user_id}`} asChild><Pressable style={styles.seller}><View style={styles.avatar}>{seller?.photo_url ? <Image source={{ uri: seller.photo_url }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{seller?.name?.[0]?.toUpperCase() || 'A'}</Text>}</View><View style={styles.sellerInfo}><Text style={styles.sellerName}>{seller?.name || 'Almari member'}</Text><Text style={styles.sellerMeta}>{seller?.city || listing.city}{seller?.rating ? ` · ★ ${Number(seller.rating).toFixed(1)}` : ''}</Text></View><Ionicons name="chevron-forward" color="#718080" size={18} /></Pressable></Link></View></View>
+    {related.length > 0 && <View style={styles.related}><View style={styles.relatedHeader}><Text style={styles.sectionTitle}>More from this category</Text><Link href={`/search?q=${encodeURIComponent(listing.category)}`} asChild><Pressable><Text style={styles.seeAll}>See all</Text></Pressable></Link></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.relatedRow}>{related.map(item => <Link key={item.id} href={`/listing/${item.id}`} asChild><Pressable style={styles.relatedCard}><Image source={{ uri: item.images?.[0] }} style={styles.relatedImage} /><Text style={styles.relatedPrice}>{money(item.price)}</Text><Text style={styles.relatedTitle} numberOfLines={1}>{item.title}</Text></Pressable></Link>)}</ScrollView></View>}
+  </ScrollView><WebFooter /><Modal visible={offerOpen} transparent animationType="fade"><View style={styles.modalBackdrop}><View style={styles.modal}><Text style={styles.modalTitle}>Make an offer</Text><Text style={styles.modalText}>The listing price is {money(listing.price)}.</Text><TextInput value={offer} onChangeText={setOffer} keyboardType="numeric" placeholder="Your offer in PKR" placeholderTextColor="#718080" style={styles.offerInput} /><View style={styles.modalActions}><Pressable onPress={() => setOfferOpen(false)} style={styles.modalCancel}><Text style={styles.offerText}>Cancel</Text></Pressable><Pressable disabled={sending} onPress={sendOffer} style={styles.modalSend}><Text style={styles.buyText}>{sending ? 'Sending…' : 'Send offer'}</Text></Pressable></View></View></View></Modal></View>;
 }
+function Detail({ label, value }: { label: string; value: string }) { return <View style={styles.detail}><Text style={styles.detailLabel}>{label}</Text><Text style={styles.detailValue}>{value}</Text></View>; }
+const styles = StyleSheet.create({ screen:{flex:1,backgroundColor:'#F6F8F8'},scroll:{flex:1},content:{maxWidth:1240,width:'100%',alignSelf:'center',paddingHorizontal:20,paddingBottom:48},loading:{flex:1,alignItems:'center',justifyContent:'center',backgroundColor:'#F6F8F8'},muted:{color:'#718080'},breadcrumb:{height:52,flexDirection:'row',alignItems:'center',gap:5},breadcrumbLink:{fontSize:13,color:'#007782'},breadcrumbCurrent:{fontSize:13,color:'#718080',flex:1},top:{flexDirection:'row',gap:24,alignItems:'flex-start'},topCompact:{flexDirection:'column',gap:14},gallery:{flex:1,minWidth:0},mainImage:{width:'100%',height:560,backgroundColor:'#EAF0EF',borderRadius:10,overflow:'hidden',position:'relative'},image:{width:'100%',height:'100%'},heart:{position:'absolute',top:14,right:14,width:42,height:42,borderRadius:21,alignItems:'center',justifyContent:'center',backgroundColor:'#fff',shadowColor:'#123',shadowOpacity:.13,shadowRadius:8,elevation:3},counter:{position:'absolute',bottom:13,right:13,backgroundColor:'rgba(18,38,38,.75)',borderRadius:16,paddingHorizontal:10,paddingVertical:5},counterText:{color:'#fff',fontSize:12,fontWeight:'700'},thumbs:{gap:9,paddingVertical:11},thumb:{height:68,width:54,borderRadius:6,overflow:'hidden',borderWidth:2,borderColor:'transparent'},thumbActive:{borderColor:'#007782'},thumbImage:{height:'100%',width:'100%'},panel:{width:380,backgroundColor:'#fff',borderWidth:1,borderColor:'#DFE9E8',borderRadius:10,padding:20},titleRow:{paddingBottom:16,borderBottomWidth:1,borderColor:'#E5EEEE'},titleCopy:{gap:5},price:{fontSize:23,fontWeight:'800',color:'#172525'},title:{fontSize:18,fontWeight:'700',color:'#263333',lineHeight:24},subtle:{color:'#718080',fontSize:14},details:{paddingVertical:13,gap:10},detail:{flexDirection:'row',justifyContent:'space-between'},detailLabel:{fontSize:14,color:'#718080'},detailValue:{fontSize:14,color:'#263333',fontWeight:'600',maxWidth:'58%',textAlign:'right'},buy:{backgroundColor:'#007782',borderRadius:7,paddingVertical:14,alignItems:'center',marginTop:5},buyText:{color:'#fff',fontWeight:'800',fontSize:15},offer:{borderWidth:1,borderColor:'#007782',borderRadius:7,paddingVertical:13,alignItems:'center',marginTop:10},offerText:{color:'#007782',fontWeight:'800',fontSize:14},message:{flexDirection:'row',justifyContent:'center',alignItems:'center',gap:7,paddingVertical:15},messageText:{color:'#007782',fontSize:14,fontWeight:'700'},protection:{flexDirection:'row',gap:9,borderTopWidth:1,borderColor:'#E5EEEE',paddingTop:15,marginTop:2},protectionCopy:{flex:1},protectionTitle:{fontSize:13,fontWeight:'800',color:'#263333'},protectionText:{fontSize:12,lineHeight:17,color:'#718080',marginTop:2},lower:{flexDirection:'row',gap:20,marginTop:20,alignItems:'flex-start'},lowerCompact:{flexDirection:'column'},description:{flex:1,backgroundColor:'#fff',borderRadius:10,borderWidth:1,borderColor:'#DFE9E8',padding:20,minHeight:145},sectionTitle:{fontSize:17,fontWeight:'800',color:'#263333'},descriptionText:{fontSize:14,lineHeight:21,color:'#405757',marginTop:12},listed:{fontSize:12,color:'#849292',marginTop:17},sellerCard:{width:380,backgroundColor:'#fff',borderRadius:10,borderWidth:1,borderColor:'#DFE9E8',padding:20},seller:{flexDirection:'row',alignItems:'center',marginTop:14},avatar:{width:43,height:43,borderRadius:22,backgroundColor:'#DDF1EE',alignItems:'center',justifyContent:'center',overflow:'hidden'},avatarImage:{width:'100%',height:'100%'},avatarText:{fontWeight:'800',color:'#007782'},sellerInfo:{flex:1,marginLeft:11},sellerName:{color:'#263333',fontWeight:'800',fontSize:14},sellerMeta:{color:'#718080',fontSize:12,marginTop:3},related:{marginTop:34},relatedHeader:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginBottom:14},seeAll:{fontSize:14,fontWeight:'700',color:'#007782'},relatedRow:{gap:14,paddingRight:20},relatedCard:{width:158},relatedImage:{width:158,height:195,borderRadius:8,backgroundColor:'#EAF0EF'},relatedPrice:{fontSize:14,fontWeight:'800',color:'#263333',marginTop:8},relatedTitle:{fontSize:13,color:'#718080',marginTop:3},modalBackdrop:{flex:1,backgroundColor:'rgba(0,0,0,.45)',alignItems:'center',justifyContent:'center',padding:20},modal:{width:'100%',maxWidth:380,backgroundColor:'#fff',borderRadius:12,padding:22},modalTitle:{fontSize:20,fontWeight:'800',color:'#263333'},modalText:{fontSize:14,color:'#718080',marginTop:6},offerInput:{borderWidth:1,borderColor:'#C9D8D7',borderRadius:7,paddingHorizontal:13,paddingVertical:12,color:'#263333',fontSize:16,marginTop:18},modalActions:{flexDirection:'row',gap:10,marginTop:14},modalCancel:{flex:1,borderWidth:1,borderColor:'#007782',borderRadius:7,paddingVertical:12,alignItems:'center'},modalSend:{flex:1,backgroundColor:'#007782',borderRadius:7,paddingVertical:12,alignItems:'center'} });

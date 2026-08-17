@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase/client';
@@ -12,7 +12,7 @@ interface Order {
   seller_id: string;
   buyer_id: string;
   type: 'buy' | 'rent' | 'exchange';
-  status: 'pending' | 'shipped' | 'delivered' | 'confirmed' | 'cancelled';
+  status: 'pending_payment' | 'paid' | 'shipped' | 'delivered' | 'completed' | 'disputed' | 'cancelled' | 'refunded';
   total_amount: number;
   created_at: string;
   rental_start_date?: string;
@@ -35,9 +35,9 @@ export default function OrdersScreen() {
         .order('created_at', { ascending: false });
 
       if (activeTab === 'active') {
-        query = query.in('status', ['pending', 'shipped', 'delivered']);
+        query = query.in('status', ['pending_payment', 'paid', 'shipped', 'delivered', 'disputed']);
       } else if (activeTab === 'completed') {
-        query = query.eq('status', 'confirmed');
+        query = query.eq('status', 'completed');
       } else if (activeTab === 'rentals') {
         query = query.eq('type', 'rent');
       } else if (activeTab === 'exchanges') {
@@ -51,23 +51,26 @@ export default function OrdersScreen() {
     enabled: !!user?.id,
   });
 
-  const updateOrderStatus = async (orderId: string, status: string) => {
-    const { error } = await supabase
-      .from('orders')
-      .update({ status })
-      .eq('id', orderId);
+  const orderAction = async (orderId: string, action: 'ship' | 'received' | 'confirm' | 'cancel' | 'issue') => {
+    const { error } = await supabase.rpc('order_action', {
+      p_order_id: orderId,
+      p_action: action,
+      p_tracking_number: action === 'ship' ? `MANUAL-${orderId.slice(0, 8)}` : null,
+      p_carrier: action === 'ship' ? 'manual' : null,
+    });
 
     if (error) {
-      console.error('Error updating order:', error);
+      Alert.alert('Could not update order', error.message);
       return;
     }
   };
 
   const renderOrderCard = (order: Order) => {
     const isSeller = user?.id === order.seller_id;
-    const canMarkShipped = isSeller && order.status === 'pending';
+    const canMarkShipped = isSeller && order.status === 'paid';
     const canMarkReceived = !isSeller && order.status === 'shipped';
-    const canConfirmReturn = !isSeller && order.type === 'rent' && order.status === 'delivered';
+    const canConfirm = !isSeller && order.status === 'delivered';
+    const canRaiseIssue = !isSeller && order.status === 'delivered';
 
     return (
       <View key={order.id} className="bg-white rounded-xl p-4 shadow-sm mb-4">
@@ -82,10 +85,10 @@ export default function OrdersScreen() {
 
         <View className="flex flex-row items-center justify-between mb-3">
           <View className={`px-3 py-1 rounded-full ${
-            order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+            order.status === 'pending_payment' || order.status === 'paid' ? 'bg-yellow-100 text-yellow-800' :
             order.status === 'shipped' ? 'bg-blue-100 text-blue-800' :
             order.status === 'delivered' ? 'bg-purple-100 text-purple-800' :
-            order.status === 'confirmed' ? 'bg-green-100 text-green-800' :
+            order.status === 'completed' ? 'bg-green-100 text-green-800' :
             'bg-gray-100 text-gray-800'
           }`}>
             <Text className="text-sm font-medium capitalize">{order.status}</Text>
@@ -106,7 +109,7 @@ export default function OrdersScreen() {
         <View className="flex flex-row gap-2">
           {canMarkShipped && (
             <Pressable
-              onPress={() => updateOrderStatus(order.id, 'shipped')}
+              onPress={() => orderAction(order.id, 'ship')}
               className="flex-1 bg-brand rounded-lg py-2 items-center"
             >
               <Text className="text-white font-medium">Mark Shipped</Text>
@@ -114,20 +117,21 @@ export default function OrdersScreen() {
           )}
           {canMarkReceived && (
             <Pressable
-              onPress={() => updateOrderStatus(order.id, 'delivered')}
+              onPress={() => orderAction(order.id, 'received')}
               className="flex-1 bg-brand rounded-lg py-2 items-center"
             >
               <Text className="text-white font-medium">Mark Received</Text>
             </Pressable>
           )}
-          {canConfirmReturn && (
+          {canConfirm && (
             <Pressable
-              onPress={() => updateOrderStatus(order.id, 'confirmed')}
+              onPress={() => orderAction(order.id, 'confirm')}
               className="flex-1 bg-green-500 rounded-lg py-2 items-center"
             >
-              <Text className="text-white font-medium">Confirm Return</Text>
+              <Text className="text-white font-medium">Everything is OK</Text>
             </Pressable>
           )}
+          {canRaiseIssue && <Pressable onPress={() => orderAction(order.id, 'issue')} className="flex-1 border border-red-500 rounded-lg py-2 items-center"><Text className="text-red-600 font-medium">I have an issue</Text></Pressable>}
         </View>
       </View>
     );
@@ -166,23 +170,6 @@ export default function OrdersScreen() {
         )}
       </ScrollView>
 
-      {/* Admin Auto-Release Button */}
-      <View className="p-4 bg-white border-t border-gray-200">
-        <Pressable
-          onPress={async () => {
-            // Call the auto-release function
-            const { error } = await supabase.rpc('process_auto_release');
-            if (error) {
-              console.error('Auto-release error:', error);
-            } else {
-              alert('Auto-release processed successfully');
-            }
-          }}
-          className="bg-gray-800 rounded-lg py-3 items-center"
-        >
-          <Text className="text-white font-medium">Process Auto-Release (Admin)</Text>
-        </Pressable>
-      </View>
     </View>
   );
 }

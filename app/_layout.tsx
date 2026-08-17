@@ -32,6 +32,8 @@ export default function RootLayout() {
         <Stack.Screen name="orders" options={{ headerShown: false }} />
         <Stack.Screen name="profile/[username]" options={{ headerShown: false }} />
         <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
+        <Stack.Screen name="notifications" options={{ headerShown: false }} />
+        <Stack.Screen name="addresses/index" options={{ headerShown: false }} />
       </Stack>
     </QueryProvider>
   );

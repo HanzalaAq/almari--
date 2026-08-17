@@ -1,21 +1,23 @@
-import { View, Text, ScrollView, Pressable, TextInput, Image, Alert } from 'react-native';
-import { useState } from 'react';
-import { useRouter } from 'expo-router';
-import { useAuthStore } from '../../store/useAuthStore';
+import { View, Text, ScrollView, Pressable, TextInput, Image, Alert, ActivityIndicator } from 'react-native';
+import { useState, useEffect } from 'react';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useAuthStore } from '../../../store/useAuthStore';
 import * as ImagePicker from 'expo-image-picker';
-import { uploadListingImage } from '../../lib/storage/upload';
-import { supabase } from '../../lib/supabase/client';
-import { WebFooter } from '../../components/layout/WebFooter';
+import { uploadListingImage } from '../../../lib/storage/upload';
+import { supabase } from '../../../lib/supabase/client';
 
 const CATEGORIES = ['Women', 'Men', 'Kids', 'Traditional', 'Western', 'Accessories'];
 const CONDITIONS = ['New', 'Like New', 'Good', 'Fair'];
 const SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
 const CITIES = ['Karachi', 'Lahore', 'Islamabad', 'Rawalpindi', 'Faisalabad', 'Multan', 'Peshawar'];
 
-export default function SellScreen() {
+export default function EditListingScreen() {
   const router = useRouter();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const { user } = useAuthStore();
   const [loading, setLoading] = useState(false);
+  const [fetching, setFetching] = useState(true);
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
@@ -24,11 +26,53 @@ export default function SellScreen() {
   const [brand, setBrand] = useState('');
   const [city, setCity] = useState('');
   const [images, setImages] = useState<string[]>([]);
-  const [isBuyable, setIsBuyable] = useState(true);
+
+  const [isBuyable, setIsBuyable] = useState(false);
   const [isRentable, setIsRentable] = useState(false);
   const [isExchangeable, setIsExchangeable] = useState(false);
   const [buyPrice, setBuyPrice] = useState('');
   const [rentPrice, setRentPrice] = useState('');
+
+  useEffect(() => {
+    if (!id) return;
+    loadListing();
+  }, [id]);
+
+  const loadListing = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('listings')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      if (!data) {
+        Alert.alert('Error', 'Listing not found');
+        router.back();
+        return;
+      }
+
+      setTitle(data.title || '');
+      setDescription(data.description || '');
+      setCategory(data.category || '');
+      setCondition(data.condition || '');
+      setSize(data.size || '');
+      setBrand(data.brand || '');
+      setCity(data.city || '');
+      setImages(data.images || []);
+      setIsBuyable(data.is_buyable || false);
+      setIsRentable(data.is_rentable || false);
+      setIsExchangeable(data.is_exchangeable || false);
+      setBuyPrice(data.price ? String(data.price) : '');
+      setRentPrice(data.rental_price_per_day ? String(data.rental_price_per_day) : '');
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+      router.back();
+    } finally {
+      setFetching(false);
+    }
+  };
 
   const pickImages = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -36,6 +80,7 @@ export default function SellScreen() {
       allowsMultipleSelection: true,
       quality: 0.8,
     });
+
     if (!result.canceled && result.assets) {
       setImages([...images, ...result.assets.map((asset) => asset.uri)]);
     }
@@ -47,22 +92,26 @@ export default function SellScreen() {
 
   const handleSubmit = async () => {
     if (!user) {
-      Alert.alert('Login Required', 'Please login to create a listing');
+      Alert.alert('Login Required', 'Please login to edit a listing');
       router.push('/(auth)/login');
       return;
     }
+
     if (!title || !description || !category || !condition || !city) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
+
     if (images.length === 0) {
       Alert.alert('Error', 'Please add at least one image');
       return;
     }
+
     if (isBuyable && !buyPrice) {
       Alert.alert('Error', 'Please set a buy price');
       return;
     }
+
     if (isRentable && !rentPrice) {
       Alert.alert('Error', 'Please set a rent price');
       return;
@@ -70,10 +119,20 @@ export default function SellScreen() {
 
     setLoading(true);
     try {
-      // Create listing first to get an ID for image paths
-      const { data: listing, error: insertError } = await supabase
+      const existingImages = images.filter((uri) => !uri.startsWith('file://'));
+      const newUris = images.filter((uri) => uri.startsWith('file://'));
+
+      const newImageUrls = await Promise.all(
+        newUris.map(async (uri, index) => {
+          return uploadListingImage(uri, user.id, id!, index);
+        })
+      );
+
+      const imageUrls = [...existingImages, ...newImageUrls];
+
+      const { error } = await supabase
         .from('listings')
-        .insert({
+        .update({
           user_id: user.id,
           title,
           description,
@@ -82,35 +141,19 @@ export default function SellScreen() {
           size: size || null,
           brand: brand || null,
           city,
-          images: [],
+          images: imageUrls,
           price: isBuyable ? parseInt(buyPrice) : 0,
           rental_price_per_day: isRentable ? parseInt(rentPrice) : null,
+          is_buyable: isBuyable,
           is_rentable: isRentable,
           is_exchangeable: isExchangeable,
-          status: 'active',
         })
-        .select()
-        .single();
+        .eq('id', id);
 
-      if (insertError) throw insertError;
+      if (error) throw error;
 
-      // Upload images to Supabase Storage
-      const imageUrls = await Promise.all(
-        images.map(async (uri, index) => {
-          return await uploadListingImage(uri, user.id, listing.id, index);
-        })
-      );
-
-      // Update listing with image URLs
-      const { error: updateError } = await supabase
-        .from('listings')
-        .update({ images: imageUrls })
-        .eq('id', listing.id);
-
-      if (updateError) throw updateError;
-
-      Alert.alert('Success', 'Listing created successfully');
-      router.replace('/(tabs)');
+      Alert.alert('Success', 'Listing updated successfully');
+      router.back();
     } catch (error: any) {
       Alert.alert('Error', error.message);
     } finally {
@@ -118,19 +161,22 @@ export default function SellScreen() {
     }
   };
 
+  if (fetching) {
+    return (
+      <View className="flex-1 items-center justify-center bg-white">
+        <ActivityIndicator size="large" color="#E85D2C" />
+      </View>
+    );
+  }
+
   return (
-    <ScrollView className="flex-1 bg-surface">
-      <View className="w-full max-w-3xl self-center px-5 py-8">
-        <View className="mb-7">
-          <Text className="text-3xl font-bold text-text-primary">Sell an item</Text>
-          <Text className="text-text-secondary text-base mt-2">Add clear details to help your item find its next home.</Text>
-        </View>
-        <View className="bg-white border border-border rounded-xl p-5 mb-5">
+    <ScrollView className="flex-1 bg-white">
+      <View className="p-6">
+        <Text className="text-2xl font-bold text-brand mb-6">Edit Listing</Text>
 
         {/* Image Upload */}
         <View className="mb-6">
-          <Text className="text-text-primary font-bold text-lg mb-1">Photos *</Text>
-          <Text className="text-text-muted text-sm mb-3">Add up to 8 clear photos. The first photo is your cover image.</Text>
+          <Text className="text-text-primary font-medium mb-2">Photos *</Text>
           <View className="flex flex-row flex-wrap gap-3">
             {images.map((uri, index) => (
               <View key={index} className="relative">
@@ -152,13 +198,8 @@ export default function SellScreen() {
               </Pressable>
             )}
           </View>
-          <Text className="text-text-muted text-sm mt-2">Up to 8 photos · Show the item clearly and accurately</Text>
+          <Text className="text-text-muted text-sm mt-2">Up to 8 photos</Text>
         </View>
-
-        </View>
-
-        <View className="bg-white border border-border rounded-xl p-5 mb-5">
-        <Text className="text-text-primary font-bold text-lg mb-4">Item details</Text>
 
         {/* Title */}
         <View className="mb-4">
@@ -277,7 +318,7 @@ export default function SellScreen() {
 
         {/* Transaction Modes */}
         <View className="mb-6">
-          <Text className="text-text-primary font-bold text-lg mb-3">Price and availability</Text>
+          <Text className="text-text-primary font-medium mb-3">Transaction Modes</Text>
 
           <View className="flex flex-row items-center mb-3">
             <Pressable
@@ -288,8 +329,9 @@ export default function SellScreen() {
             >
               {isBuyable && <Text className="text-white text-xs">✓</Text>}
             </Pressable>
-            <Text className="text-text-primary">Sell this item</Text>
+            <Text className="text-text-primary">Sell</Text>
           </View>
+
           {isBuyable && (
             <View className="mb-3 ml-9">
               <TextInput
@@ -313,6 +355,7 @@ export default function SellScreen() {
             </Pressable>
             <Text className="text-text-primary">Rent</Text>
           </View>
+
           {isRentable && (
             <View className="mb-3 ml-9">
               <TextInput
@@ -338,11 +381,6 @@ export default function SellScreen() {
           </View>
         </View>
 
-        </View>
-        <View className="bg-brand-light rounded-xl p-4 mb-5">
-          <Text className="text-brand font-bold mb-1">Listing guidelines</Text>
-          <Text className="text-text-secondary text-sm leading-5">Only list items you own. Use accurate photos and descriptions so buyers know exactly what to expect.</Text>
-        </View>
         {/* Submit */}
         <Pressable
           onPress={handleSubmit}
@@ -350,10 +388,10 @@ export default function SellScreen() {
           className="bg-brand rounded-full py-4 items-center"
         >
           <Text className="text-white font-semibold text-lg">
-            {loading ? 'Publishing...' : 'List item'}
+            {loading ? 'Saving...' : 'Save Changes'}
           </Text>
         </Pressable>
-      </View><WebFooter />
+      </View>
     </ScrollView>
   );
 }

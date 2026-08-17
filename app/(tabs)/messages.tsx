@@ -3,16 +3,17 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase/client';
 import { useAuthStore } from '../../store/useAuthStore';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 interface Conversation {
   id: string;
+  user_id: string;
   other_user_id: string;
-  other_user_name: string;
+  other_user_name?: string;
   other_user_photo?: string;
-  last_message: string;
-  last_message_at: string;
-  unread_count: number;
+  last_message?: string;
+  last_message_at?: string;
+  unread_count?: number;
   listing_id?: string;
   listing_title?: string;
   listing_image?: string;
@@ -28,10 +29,25 @@ interface Message {
 
 export default function MessagesScreen() {
   const router = useRouter();
+  const { user: recipientId } = useLocalSearchParams<{ user?: string }>();
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [messageText, setMessageText] = useState('');
+
+  useEffect(() => {
+    const openDirectConversation = async () => {
+      if (!user?.id || !recipientId || recipientId === user.id) return;
+      const { data: existing, error: findError } = await supabase.from('conversations').select('id').or(`and(user_id.eq.${user.id},other_user_id.eq.${recipientId}),and(user_id.eq.${recipientId},other_user_id.eq.${user.id})`).limit(1).maybeSingle();
+      if (findError) { console.error(findError); return; }
+      if (existing) { setSelectedConversation(existing.id); return; }
+      const { data: created, error: createError } = await supabase.from('conversations').insert({ user_id: user.id, other_user_id: recipientId }).select('id').single();
+      if (createError) { console.error(createError); return; }
+      setSelectedConversation(created.id);
+      queryClient.invalidateQueries({ queryKey: ['conversations', user.id] });
+    };
+    openDirectConversation();
+  }, [recipientId, user?.id, queryClient]);
 
   const { data: conversations, isLoading } = useQuery({
     queryKey: ['conversations', user?.id],
@@ -40,7 +56,7 @@ export default function MessagesScreen() {
       const { data, error } = await supabase
         .from('conversations')
         .select('*')
-        .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
+        .or(`user_id.eq.${user.id},other_user_id.eq.${user.id}`)
         .order('last_message_at', { ascending: false });
 
       if (error) throw error;
@@ -67,12 +83,12 @@ export default function MessagesScreen() {
 
   const sendMessage = useMutation({
     mutationFn: async (content: string) => {
-      if (!user?.id || !selectedConversation) return;
+      if (!user?.id || !selectedConversation || !content.trim()) return;
 
       const { error } = await supabase.from('messages').insert({
         conversation_id: selectedConversation,
         sender_id: user.id,
-        content,
+          content: content.trim(),
       });
 
       if (error) throw error;
@@ -81,7 +97,7 @@ export default function MessagesScreen() {
       await supabase
         .from('conversations')
         .update({
-          last_message: content,
+          last_message: content.trim(),
           last_message_at: new Date().toISOString(),
         })
         .eq('id', selectedConversation);
@@ -148,13 +164,13 @@ export default function MessagesScreen() {
                   <View className="flex flex-row items-center mb-2">
                     <View className="w-10 h-10 bg-brand rounded-full items-center justify-center mr-3">
                       <Text className="text-white font-bold">
-                        {conv.other_user_name.charAt(0).toUpperCase()}
+                        {conv.other_user_name?.charAt(0).toUpperCase() || 'A'}
                       </Text>
                     </View>
                     <View className="flex-1">
-                      <Text className="font-semibold text-text-primary">{conv.other_user_name}</Text>
+                      <Text className="font-semibold text-text-primary">{conv.other_user_name || 'Almari member'}</Text>
                       <Text className="text-text-secondary text-sm">
-                        {conv.last_message.substring(0, 30)}...
+                        {(conv.last_message || 'Start a conversation').substring(0, 30)}
                       </Text>
                     </View>
                     {conv.unread_count > 0 && (
@@ -204,7 +220,7 @@ export default function MessagesScreen() {
                   onChangeText={setMessageText}
                 />
                 <Pressable
-                  onPress={() => sendMessage.mutate(messageText)}
+                  onPress={() => sendMessage.mutate(messageText)} disabled={!messageText.trim()}
                   className="bg-brand px-6 py-2 rounded-lg"
                 >
                   <Text className="text-white font-semibold">Send</Text>
@@ -286,13 +302,13 @@ export default function MessagesScreen() {
             <View className="flex flex-row items-center mb-2">
               <View className="w-12 h-12 bg-brand rounded-full items-center justify-center mr-3">
                 <Text className="text-white font-bold text-lg">
-                  {conv.other_user_name.charAt(0).toUpperCase()}
+                  {conv.other_user_name?.charAt(0).toUpperCase() || 'A'}
                 </Text>
               </View>
               <View className="flex-1">
-                <Text className="font-semibold text-text-primary">{conv.other_user_name}</Text>
+                <Text className="font-semibold text-text-primary">{conv.other_user_name || 'Almari member'}</Text>
                 <Text className="text-text-secondary text-sm">
-                  {conv.last_message.substring(0, 40)}...
+                  {(conv.last_message || 'Start a conversation').substring(0, 40)}
                 </Text>
               </View>
               {conv.unread_count > 0 && (

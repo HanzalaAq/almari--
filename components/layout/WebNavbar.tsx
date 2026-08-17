@@ -1,76 +1,21 @@
-import { View, Text, Pressable } from 'react-native';
-import { Link } from 'expo-router';
-import { useAuthStore } from '../../store/useAuthStore';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Link, usePathname, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuthStore } from '../../store/useAuthStore';
+import { useNotificationsStore } from '../../store/useNotificationsStore';
 
 export function WebNavbar() {
-  const { user, logout } = useAuthStore();
-
-  return (
-    <View className="bg-white/80 backdrop-blur-xl border-b border-gray-100 sticky top-0 z-50">
-      <View className="w-full px-8 py-4">
-        <View className="flex flex-row items-center justify-between w-full">
-          {/* Left: Logo */}
-          <Link href="/" asChild>
-            <Pressable className="flex flex-row items-center gap-2 mr-auto">
-              <View className="w-10 h-10 bg-gradient-to-r from-brand to-orange-600 rounded-xl items-center justify-center">
-                <Text className="text-white text-xl font-bold">A</Text>
-              </View>
-              <Text className="text-2xl font-bold bg-gradient-to-r from-brand to-orange-600 bg-clip-text text-transparent">Almari</Text>
-            </Pressable>
-          </Link>
-
-          {/* Right: Navigation Items */}
-          <View className="flex flex-row items-center gap-6 ml-auto">
-            <Link href="/" asChild>
-              <Pressable className="px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors flex flex-row items-center gap-2">
-                <Ionicons name="home-outline" size={20} color="#1A1A1A" />
-                <Text className="text-text-primary font-medium">Home</Text>
-              </Pressable>
-            </Link>
-            <Link href="/search" asChild>
-              <Pressable className="px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors flex flex-row items-center gap-2">
-                <Ionicons name="search-outline" size={20} color="#1A1A1A" />
-                <Text className="text-text-primary font-medium">Explore</Text>
-              </Pressable>
-            </Link>
-            {user ? (
-              <>
-                <Link href="/sell" asChild>
-                  <Pressable className="px-4 py-2 bg-gradient-to-r from-brand to-orange-600 rounded-xl flex flex-row items-center gap-2">
-                    <Ionicons name="add-circle-outline" size={20} color="white" />
-                    <Text className="text-white font-semibold">Sell Now</Text>
-                  </Pressable>
-                </Link>
-                <Link href="/messages" asChild>
-                  <Pressable className="px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors flex flex-row items-center gap-2">
-                    <Ionicons name="chatbubble-outline" size={20} color="#1A1A1A" />
-                    <Text className="text-text-primary font-medium">Messages</Text>
-                  </Pressable>
-                </Link>
-                <Link href="/orders" asChild>
-                  <Pressable className="px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors flex flex-row items-center gap-2">
-                    <Ionicons name="receipt-outline" size={20} color="#1A1A1A" />
-                    <Text className="text-text-primary font-medium">Orders</Text>
-                  </Pressable>
-                </Link>
-                <Link href="/profile" asChild>
-                  <Pressable className="w-10 h-10 bg-gradient-to-br from-brand to-orange-600 rounded-full items-center justify-center">
-                    <Ionicons name="person" size={20} color="white" />
-                  </Pressable>
-                </Link>
-              </>
-            ) : (
-              <Link href="/login" asChild>
-                <Pressable className="px-6 py-2.5 bg-gradient-to-r from-brand to-orange-600 rounded-xl shadow-lg shadow-brand/30 flex flex-row items-center gap-2">
-                  <Text className="text-white font-semibold">Get Started</Text>
-                  <Ionicons name="arrow-forward" size={18} color="white" />
-                </Pressable>
-              </Link>
-            )}
-          </View>
-        </View>
-      </View>
-    </View>
-  );
+  const { user } = useAuthStore(); const unreadCount = useNotificationsStore((s) => s.unreadCount); const [query,setQuery]=useState(''); const router=useRouter(); const pathname=usePathname(); const {width}=useWindowDimensions(); const compact=width<880;
+  const entrance=useRef(new Animated.Value(0)).current;
+  useEffect(()=>{Animated.timing(entrance,{toValue:1,duration:460,easing:Easing.out(Easing.cubic),useNativeDriver:true}).start();},[entrance]);
+  const search=()=>{const q=query.trim();if(q){router.push({pathname:'/search',params:{q}});setQuery('');}};
+  return <Animated.View style={{opacity:entrance,transform:[{translateY:entrance.interpolate({inputRange:[0,1],outputRange:[-12,0]})}]}} className="bg-white border-b border-border sticky top-0 z-50 shadow-sm shadow-black/5"><View className="w-full px-5 py-3 flex-row items-center">
+    <Link href="/" asChild><Pressable accessibilityRole="link" className="flex-row items-center gap-2"><View className="w-9 h-9 rounded-xl bg-brand items-center justify-center"><Text className="text-white text-lg font-extrabold">a</Text></View><View><Text className="text-2xl font-extrabold tracking-tight text-brand">almari</Text><Text className="text-[9px] tracking-[1.4px] font-bold text-text-muted">RE-LOVED FASHION</Text></View></Pressable></Link>
+    {!compact&&<View className="absolute left-1/2 -translate-x-1/2 w-[min(35vw,470px)]"><View className="flex-row items-center bg-surface border border-border rounded-xl px-3 py-2"><Ionicons name="search-outline" size={18} color="#647777"/><TextInput className="flex-1 ml-2 text-sm text-text-primary" placeholder="Search items, brands and styles" placeholderTextColor="#718080" value={query} onChangeText={setQuery} onSubmitEditing={search} returnKeyType="search"/><Pressable onPress={search} className="bg-brand rounded-lg px-3 py-1.5"><Text className="text-white text-xs font-bold">Search</Text></Pressable></View></View>}
+    <View className="ml-auto flex-row items-center gap-2">{user?<><NavAction href="/search" icon="search-outline" label="Browse" compact={compact} active={pathname==='/search'}/><NavAction href="/sell" icon="add-circle-outline" label="Sell now" compact={compact} emphasize active={pathname==='/sell'}/><Link href="/notifications" asChild><HeaderButton active={pathname==='/notifications'}><View className="relative"><Ionicons name="notifications-outline" size={22} color="#1D3030"/>{unreadCount>0&&<View className="absolute -top-1.5 -right-1.5 bg-error rounded-full min-w-4 h-4 px-1 items-center justify-center"><Text className="text-white text-[9px] font-bold">{unreadCount>9?'9+':unreadCount}</Text></View>}</View>{!compact&&<Text className="text-sm font-semibold text-text-primary">Alerts</Text>}</HeaderButton></Link><NavAction href="/messages" icon="chatbubble-outline" label="Messages" compact={compact} active={pathname==='/messages'}/><NavAction href="/profile" icon="person-outline" label="Profile" compact active={pathname==='/profile'}/></>:<><NavAction href="/search" icon="search-outline" label="Browse" compact={compact} active={pathname==='/search'}/><AuthAction label="Sign in"/><AuthAction label="Create account" primary/></>}</View>
+  </View></Animated.View>;
 }
+function NavAction({href,icon,label,compact,emphasize=false,active=false}:{href:any;icon:any;label:string;compact:boolean;emphasize?:boolean;active?:boolean}){return <Link href={href} asChild><HeaderButton emphasize={emphasize} active={active}><Ionicons name={icon} size={21} color={emphasize?'#fff':'#1D3030'}/>{!compact&&<Text className={`text-sm font-bold ${emphasize?'text-white':'text-text-primary'}`}>{label}</Text>}</HeaderButton></Link>}
+function AuthAction({label,primary=false}:{label:string;primary?:boolean}){return <Link href="/(auth)/login" asChild><Pressable className={primary?'bg-brand rounded-lg px-4 py-2 shadow-sm shadow-brand/30':'px-3 py-2'}><Text className={primary?'text-white text-sm font-extrabold':'text-brand text-sm font-extrabold'}>{label}</Text></Pressable></Link>}
+function HeaderButton({children,emphasize=false,active=false,...props}:any){const [hovered,setHovered]=useState(false);const scale=useRef(new Animated.Value(1)).current;useEffect(()=>{Animated.spring(scale,{toValue:hovered?1.035:1,friction:7,tension:150,useNativeDriver:true}).start();},[hovered,scale]);return <Pressable {...props} onHoverIn={(event)=>{setHovered(true);props.onHoverIn?.(event)}} onHoverOut={(event)=>{setHovered(false);props.onHoverOut?.(event)}}><Animated.View style={{transform:[{scale}]}} className={`flex-row items-center gap-1.5 px-3 py-2 rounded-lg ${emphasize?'bg-brand shadow-sm shadow-brand/30':active?'bg-brand-light':'bg-transparent'} ${hovered&&!emphasize?'bg-surface':''}`}>{children}</Animated.View></Pressable>}

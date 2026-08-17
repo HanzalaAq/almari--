@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../../lib/supabase/client';
 import { useAuthStore } from '../../store/useAuthStore';
 import * as ImagePicker from 'expo-image-picker';
+import { uploadProfileImage } from '../../lib/storage/upload';
 
 export default function ProfileSetupScreen() {
   const router = useRouter();
@@ -34,11 +35,9 @@ export default function ProfileSetupScreen() {
 
     setLoading(true);
     try {
-      // Upload photo if provided
       let photoUrl = '';
-      if (photo) {
-        // TODO: Implement R2 upload
-        photoUrl = photo; // Temporary
+      if (photo && user) {
+        photoUrl = await uploadProfileImage(photo, user.id);
       }
 
       // Create user profile

@@ -4,7 +4,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "jsx": "react-native",
     "module": "esnext",
@@ -13,6 +13,7 @@
       "esnext"
     ],
     "incremental": true,
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
       "@/*": [

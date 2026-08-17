@@ -23,27 +23,27 @@ export default function Button({
   const baseStyles: ViewStyle = {
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 12,
+    borderRadius: 9999,
     opacity: disabled ? 0.5 : 1,
   };
 
   const variantStyles: Record<string, ViewStyle> = {
     primary: {
-      backgroundColor: '#FF7A1A',
+      backgroundColor: '#007782',
     },
     secondary: {
-      backgroundColor: '#F3F4F6',
+      backgroundColor: '#EDF2F2',
     },
     outline: {
-      borderWidth: 2,
-      borderColor: '#FF7A1A',
+      borderWidth: 1.5,
+      borderColor: '#007782',
       backgroundColor: 'transparent',
     },
   };
 
   const sizeStyles: Record<string, ViewStyle> = {
     sm: {
-      paddingHorizontal: 16,
+      paddingHorizontal: 12,
       paddingVertical: 6,
     },
     md: {
@@ -61,22 +61,22 @@ export default function Button({
       color: '#FFFFFF',
     },
     secondary: {
-      color: '#1A1A1A',
+      color: '#090A0A',
     },
     outline: {
-      color: '#FF7A1A',
+      color: '#007782',
     },
   };
 
   const textSizeStyles: Record<string, TextStyle> = {
     sm: {
-      fontSize: 14,
+      fontSize: 13,
     },
     md: {
-      fontSize: 16,
+      fontSize: 15,
     },
     lg: {
-      fontSize: 18,
+      fontSize: 17,
     },
   };
 

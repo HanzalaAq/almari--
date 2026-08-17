@@ -1,172 +1,43 @@
-import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../../lib/supabase/client';
 import { useAuthStore } from '../../../store/useAuthStore';
 
-interface Listing {
-  id: string;
-  title: string;
-  price: number;
-  images: string[];
-  city: string;
-  seller_id: string;
-}
+type Listing = { id: string; title: string; price: number; user_id: string; status: string };
+type Address = { id: string; full_name: string; street: string; city: string; province: string; is_default: boolean };
+const buyerFee = (price: number) => Math.round((price * .05 + 70) * 100) / 100;
 
 export default function BuyScreen() {
-  const { id } = useLocalSearchParams();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuthStore();
+  const [selectedAddress, setSelectedAddress] = useState<string>();
   const [loading, setLoading] = useState(false);
+  const { data: listing, isLoading } = useQuery({ queryKey: ['checkout-listing', id], queryFn: async () => { const { data, error } = await supabase.from('listings').select('id,title,price,user_id,status').eq('id', id).single(); if (error) throw error; return data as Listing; } });
+  const { data: addresses = [] } = useQuery({ queryKey: ['checkout-addresses', user?.id], enabled: !!user?.id, queryFn: async () => { const { data, error } = await supabase.from('shipping_addresses').select('*').eq('user_id', user!.id).order('is_default', { ascending: false }); if (error) throw error; return data as Address[]; } });
+  const addressId = selectedAddress || addresses[0]?.id;
+  const protection = listing ? buyerFee(Number(listing.price)) : 0;
+  const shipping = 250;
+  const total = listing ? Number(listing.price) + protection + shipping : 0;
 
-  const { data: listing, isLoading } = useQuery({
-    queryKey: ['listing', id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('listings')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
-      return data as Listing;
-    },
-  });
-
-  const calculatePlatformFee = (price: number) => {
-    return price >= 2000 ? 100 : 50;
-  };
-
-  const handleBuy = async () => {
-    if (!user) {
-      Alert.alert('Login Required', 'Please login to purchase items');
-      router.push('/(auth)/login');
-      return;
-    }
-
-    if (!listing) return;
-
-    const platformFee = calculatePlatformFee(listing.price);
-    const total = listing.price + platformFee;
-
+  const checkout = async () => {
+    if (!user) { router.push('/(auth)/login'); return; }
+    if (!addressId) { Alert.alert('Delivery address needed', 'Add a delivery address before checking out.', [{ text: 'Add address', onPress: () => router.push('/addresses') }, { text: 'Cancel', style: 'cancel' }]); return; }
     setLoading(true);
-    try {
-      // Create order
-      const { error } = await supabase.from('orders').insert({
-        listing_id: id,
-        seller_id: listing.seller_id,
-        buyer_id: user.id,
-        type: 'buy',
-        status: 'pending',
-        total_amount: total,
-        platform_fee: platformFee,
-      });
-
-      if (error) throw error;
-
-      // Mark listing as sold
-      await supabase
-        .from('listings')
-        .update({ status: 'sold' })
-        .eq('id', id);
-
-      Alert.alert('Success', 'Order placed successfully');
-      router.replace('/orders');
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
-    } finally {
-      setLoading(false);
-    }
+    const { data, error } = await supabase.rpc('create_marketplace_order', { p_listing_id: id, p_address_id: addressId, p_shipping_method: 'standard', p_shipping_fee: shipping });
+    setLoading(false);
+    if (error) { Alert.alert('Checkout unavailable', error.message); return; }
+    Alert.alert('Order reserved', 'Your order is protected. Connect your payment provider to capture the payment, then track delivery from Orders.', [{ text: 'View order', onPress: () => router.replace('/orders') }]);
   };
 
-  if (isLoading) {
-    return (
-      <View className="flex-1 items-center justify-center">
-        <Text className="text-text-muted">Loading...</Text>
-      </View>
-    );
-  }
-
-  if (!listing) {
-    return (
-      <View className="flex-1 items-center justify-center">
-        <Text className="text-text-muted">Listing not found</Text>
-      </View>
-    );
-  }
-
-  const platformFee = calculatePlatformFee(listing.price);
-  const total = listing.price + platformFee;
-
-  return (
-    <ScrollView className="flex-1 bg-white">
-      <View className="p-6">
-        <Text className="text-2xl font-bold text-brand mb-6">Complete Purchase</Text>
-
-        {/* Order Summary */}
-        <View className="bg-gray-50 rounded-xl p-4 mb-6">
-          <Text className="text-lg font-bold text-brand mb-4">Order Summary</Text>
-
-          <View className="flex flex-row justify-between mb-3">
-            <Text className="text-text-primary font-medium">{listing.title}</Text>
-            <Text className="text-text-primary font-medium">
-              PKR {listing.price.toLocaleString()}
-            </Text>
-          </View>
-
-          <View className="flex flex-row justify-between mb-3">
-            <Text className="text-text-secondary">Platform Fee</Text>
-            <Text className="text-text-secondary">PKR {platformFee.toLocaleString()}</Text>
-          </View>
-
-          <View className="border-t border-gray-300 my-3" />
-
-          <View className="flex flex-row justify-between">
-            <Text className="text-lg font-bold text-brand">Total</Text>
-            <Text className="text-lg font-bold text-brand">PKR {total.toLocaleString()}</Text>
-          </View>
-        </View>
-
-        {/* Payment Info */}
-        <View className="bg-brand-light rounded-xl p-4 mb-6">
-          <Text className="text-brand font-semibold mb-2">Payment Information</Text>
-          <Text className="text-text-secondary text-sm">
-            Your payment will be held in escrow until you confirm receipt of the item.
-            The seller will receive payment after confirmation.
-          </Text>
-        </View>
-
-        {/* Buyer Protection */}
-        <View className="bg-green-50 rounded-xl p-4 mb-6">
-          <Text className="text-green-700 font-semibold mb-2">Buyer Protection</Text>
-          <Text className="text-text-secondary text-sm">
-            • Full refund if item doesn't match description{'\n'}
-            • Secure payment through escrow{'\n'}
-            • Seller only paid after you confirm receipt{'\n'}
-            • 5-day auto-release if no action taken
-          </Text>
-        </View>
-
-        {/* Buy Button */}
-        <Pressable
-          onPress={handleBuy}
-          disabled={loading}
-          className="bg-brand rounded-full py-4 items-center"
-        >
-          <Text className="text-white font-semibold text-lg">
-            {loading ? 'Processing...' : `Pay PKR ${total.toLocaleString()}`}
-          </Text>
-        </Pressable>
-
-        {/* Cancel */}
-        <Pressable
-          onPress={() => router.back()}
-          className="mt-4 py-3 items-center"
-        >
-          <Text className="text-text-muted">Cancel</Text>
-        </Pressable>
-      </View>
-    </ScrollView>
-  );
+  if (isLoading || !listing) return <View className="flex-1 items-center justify-center bg-white"><ActivityIndicator color="#007782" /></View>;
+  return <ScrollView className="flex-1 bg-white"><View className="p-6 max-w-2xl w-full self-center"><Text className="text-2xl font-bold text-text-primary">Checkout</Text><Text className="text-text-secondary mt-1 mb-6">Review your delivery and protected payment.</Text>
+    <View className="bg-surface rounded-xl p-4 mb-5"><Text className="font-bold text-text-primary mb-3">Order summary</Text><Row label={listing.title} value={`PKR ${Number(listing.price).toLocaleString()}`} /><Row label="Buyer Protection" value={`PKR ${protection.toLocaleString()}`} /><Row label="Standard delivery" value={`PKR ${shipping.toLocaleString()}`} /><View className="border-t border-border mt-3 pt-3"><Row label="Total" value={`PKR ${total.toLocaleString()}`} strong /></View></View>
+    <Text className="font-bold text-text-primary mb-2">Delivery address</Text>{addresses.length ? <><Pressable onPress={() => router.push('/addresses')} className="mb-2"><Text className="text-brand font-semibold">Manage addresses</Text></Pressable>{addresses.map(address => <Pressable key={address.id} onPress={() => setSelectedAddress(address.id)} className={`p-4 rounded-xl border mb-2 ${addressId === address.id ? 'border-brand bg-brand-light' : 'border-border bg-white'}`}><Text className="font-semibold text-text-primary">{address.full_name}</Text><Text className="text-text-secondary text-sm mt-1">{address.street}, {address.city}, {address.province}</Text></Pressable>)}</> : <Pressable onPress={() => router.push('/addresses')} className="p-4 rounded-xl border border-dashed border-brand mb-5"><Text className="text-brand font-semibold">Add a delivery address</Text></Pressable>}
+    <View className="bg-brand-light rounded-xl p-4 mt-3 mb-5"><Text className="font-bold text-brand mb-1">Buyer Protection included</Text><Text className="text-text-secondary text-sm leading-5">Payment is held until delivery. If an item is damaged, missing, or significantly not as described, report an issue within 2 days of delivery.</Text></View>
+    <Pressable onPress={checkout} disabled={loading || !addressId} className={`rounded-full py-4 items-center ${loading || !addressId ? 'bg-gray-300' : 'bg-brand'}`}><Text className="text-white font-bold text-base">{loading ? 'Creating protected order…' : `Continue to payment · PKR ${total.toLocaleString()}`}</Text></Pressable><Pressable onPress={() => router.back()} className="py-4 items-center"><Text className="text-text-secondary">Cancel</Text></Pressable>
+  </View></ScrollView>;
 }
+function Row({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) { return <View className="flex-row justify-between mb-2"><Text className={strong ? 'font-bold text-text-primary' : 'text-text-secondary'} numberOfLines={1}>{label}</Text><Text className={strong ? 'font-bold text-text-primary' : 'text-text-secondary'}>{value}</Text></View>; }

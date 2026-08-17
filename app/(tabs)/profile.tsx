@@ -1,10 +1,11 @@
-import { View, Text, ScrollView, Pressable, Image, TextInput, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, Image, TextInput, Alert, StyleSheet, TouchableOpacity } from 'react-native';
 import { useState } from 'react';
 import { useLocalSearchParams, useRouter, Link } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase/client';
 import { useAuthStore } from '../../store/useAuthStore';
 import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 
 interface UserProfile {
   id: string;
@@ -27,6 +28,9 @@ interface Listing {
   images: string[];
   city: string;
   condition: string;
+  category: string;
+  size?: string;
+  created_at: string;
 }
 
 export default function ProfileScreen() {
@@ -64,7 +68,7 @@ export default function ProfileScreen() {
       const { data, error } = await supabase
         .from('listings')
         .select('*')
-        .eq('seller_id', targetUserId)
+        .eq('user_id', targetUserId)
         .eq('status', 'active')
         .order('created_at', { ascending: false });
 
@@ -78,7 +82,6 @@ export default function ProfileScreen() {
     queryKey: ['wallet-balance', user?.id],
     queryFn: async () => {
       if (!user?.id) return 0;
-      // Calculate wallet balance from completed orders
       const { data, error } = await supabase
         .from('orders')
         .select('total_amount')
@@ -87,7 +90,7 @@ export default function ProfileScreen() {
 
       if (error) throw error;
       const total = data?.reduce((sum, order) => sum + order.total_amount, 0) || 0;
-      return total * 0.9; // 10% commission
+      return total * 0.9;
     },
     enabled: isOwnProfile && !!user?.id,
   });
@@ -119,7 +122,7 @@ export default function ProfileScreen() {
   };
 
   const handleWithdraw = () => {
-    Alert.alert('Withdraw', 'This feature is coming soon. Bank transfer integration pending.');
+    router.push('/orders');
   };
 
   const pickImage = async () => {
@@ -135,10 +138,20 @@ export default function ProfileScreen() {
     }
   };
 
+  const getConditionColor = (condition: string) => {
+    switch (condition) {
+      case 'New': return '#10B981';
+      case 'Like New': return '#34D399';
+      case 'Good': return '#60A5FA';
+      case 'Fair': return '#F59E0B';
+      default: return '#9CA3AF';
+    }
+  };
+
   if (isLoading) {
     return (
-      <View className="flex-1 items-center justify-center">
-        <Text className="text-text-muted">Loading...</Text>
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
   }
@@ -147,179 +160,579 @@ export default function ProfileScreen() {
 
   if (!displayProfile) {
     return (
-      <View className="flex-1 items-center justify-center">
-        <Text className="text-text-muted">Profile not found</Text>
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>Profile not found</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView className="flex-1 bg-gray-50">
+    <ScrollView style={styles.container}>
+      {/* Cover Banner */}
+      <View style={styles.coverBanner} />
+      
       {/* Profile Header */}
-      <View className="bg-white p-6 border-b border-gray-200">
-        <View className="items-center mb-4">
+      <View style={styles.profileHeader}>
+        <View style={styles.avatarContainer}>
           {isEditing ? (
-            <Pressable onPress={pickImage} className="w-24 h-24 bg-gray-200 rounded-full items-center justify-center mb-3">
+            <TouchableOpacity onPress={pickImage} style={styles.editAvatarButton}>
               {editPhoto ? (
-                <Image source={{ uri: editPhoto }} className="w-full h-full rounded-full" />
+                <Image source={{ uri: editPhoto }} style={styles.avatar} />
               ) : (
-                <Text className="text-text-muted">Add Photo</Text>
+                <View style={styles.avatarPlaceholder}>
+                  <Ionicons name="camera-outline" size={32} color="#8B9393" />
+                </View>
               )}
-            </Pressable>
+            </TouchableOpacity>
           ) : (
-            <View className="w-24 h-24 bg-brand rounded-full items-center justify-center mb-3">
-              <Text className="text-white font-bold text-3xl">
-                {displayProfile.name.charAt(0).toUpperCase()}
-              </Text>
+            <View style={styles.avatarPlaceholder}>
+              {displayProfile.photo_url ? (
+                <Image source={{ uri: displayProfile.photo_url }} style={styles.avatar} cache="force-cache" />
+              ) : (
+                <Text style={styles.avatarText}>
+                  {displayProfile.name.charAt(0).toUpperCase()}
+                </Text>
+              )}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.profileInfo}>
+          {isEditing ? (
+            <TextInput
+              style={styles.editNameInput}
+              value={editName}
+              onChangeText={setEditName}
+              placeholder="Name"
+            />
+          ) : (
+            <Text style={styles.profileName}>{displayProfile.name}</Text>
+          )}
+
+          {isEditing ? (
+            <TextInput
+              style={styles.editCityInput}
+              value={editCity}
+              onChangeText={setEditCity}
+              placeholder="City"
+            />
+          ) : (
+            <View style={styles.locationRow}>
+              <Ionicons name="location-outline" size={16} color="#8B9393" />
+              <Text style={styles.locationText}>{displayProfile.city}</Text>
             </View>
           )}
 
-          {isEditing ? (
-            <TextInput
-              className="text-xl font-bold text-text-primary text-center mb-1"
-              value={editName}
-              onChangeText={setEditName}
-            />
-          ) : (
-            <Text className="text-xl font-bold text-text-primary mb-1">{displayProfile.name}</Text>
-          )}
-
-          {isEditing ? (
-            <TextInput
-              className="text-text-secondary text-center"
-              value={editCity}
-              onChangeText={setEditCity}
-            />
-          ) : (
-            <Text className="text-text-secondary">{displayProfile.city}</Text>
-          )}
-
           {displayProfile.rating && (
-            <Text className="text-brand font-semibold mt-1">★ {displayProfile.rating.toFixed(1)}</Text>
+            <View style={styles.ratingRow}>
+              <Ionicons name="star" size={16} color="#FFB800" />
+              <Text style={styles.ratingText}>{displayProfile.rating.toFixed(1)}</Text>
+            </View>
           )}
         </View>
 
         {isOwnProfile ? (
-          <View className="flex flex-row gap-3">
+          <View style={styles.actionButtons}>
             {isEditing ? (
               <>
-                <Pressable
+                <TouchableOpacity
                   onPress={handleSaveProfile}
-                  className="flex-1 bg-brand rounded-full py-2 items-center"
+                  style={styles.saveButton}
                 >
-                  <Text className="text-white font-semibold">Save</Text>
-                </Pressable>
-                <Pressable
+                  <Text style={styles.saveButtonText}>Save</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
                   onPress={() => setIsEditing(false)}
-                  className="flex-1 bg-gray-200 rounded-full py-2 items-center"
+                  style={styles.cancelButton}
                 >
-                  <Text className="text-text-primary font-semibold">Cancel</Text>
-                </Pressable>
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
               </>
             ) : (
               <>
-                <Pressable
+                <TouchableOpacity
                   onPress={() => setIsEditing(true)}
-                  className="flex-1 bg-gray-200 rounded-full py-2 items-center"
+                  style={styles.editButton}
                 >
-                  <Text className="text-text-primary font-semibold">Edit Profile</Text>
-                </Pressable>
-                <Pressable
+                  <Ionicons name="create-outline" size={18} color="#090A0A" />
+                  <Text style={styles.editButtonText}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
                   onPress={() => {
                     logout();
                     router.replace('/(auth)/login');
                   }}
-                  className="flex-1 bg-red-100 rounded-full py-2 items-center"
+                  style={styles.logoutButton}
                 >
-                  <Text className="text-red-600 font-semibold">Logout</Text>
-                </Pressable>
+                  <Ionicons name="log-out-outline" size={18} color="#DC2626" />
+                  <Text style={styles.logoutButtonText}>Logout</Text>
+                </TouchableOpacity>
               </>
             )}
           </View>
         ) : (
           <Link href={`/messages?user=${displayProfile.id}`} asChild>
-            <Pressable className="bg-brand rounded-full py-2 items-center">
-              <Text className="text-white font-semibold">Message</Text>
-            </Pressable>
+            <TouchableOpacity style={styles.messageButton}>
+              <Ionicons name="chatbubble-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.messageButtonText}>Message</Text>
+            </TouchableOpacity>
           </Link>
         )}
       </View>
 
       {/* Wallet (Own Profile Only) */}
       {isOwnProfile && (
-        <View className="bg-white p-6 mb-4 border-b border-gray-200">
-          <Text className="text-lg font-bold text-brand mb-2">Wallet Balance</Text>
-          <Text className="text-3xl font-bold text-text-primary mb-4">
+        <View style={styles.walletCard}>
+          <View style={styles.walletHeader}>
+            <Ionicons name="wallet-outline" size={24} color="#FF7A1A" />
+            <Text style={styles.walletTitle}>Wallet Balance</Text>
+          </View>
+          <Text style={styles.walletBalance}>
             PKR {walletBalance?.toLocaleString() || '0'}
           </Text>
-          <Pressable onPress={handleWithdraw} className="bg-brand rounded-full py-3 items-center">
-            <Text className="text-white font-semibold">Withdraw</Text>
-          </Pressable>
+          <TouchableOpacity onPress={handleWithdraw} style={styles.withdrawButton}>
+            <Text style={styles.withdrawButtonText}>View sales</Text>
+          </TouchableOpacity>
         </View>
       )}
 
       {/* Stats */}
-      <View className="bg-white p-6 mb-4 border-b border-gray-200">
-        <Text className="text-lg font-bold text-brand mb-4">Stats</Text>
-        <View className="grid grid-cols-2 gap-4">
-          <View className="bg-gray-50 rounded-lg p-4 items-center">
-            <Text className="text-2xl font-bold text-brand">
-              {displayProfile.stats?.listings_count || 0}
+      <View style={styles.statsCard}>
+        <Text style={styles.sectionTitle}>Stats</Text>
+        <View style={styles.statsGrid}>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>
+              {displayProfile.stats?.listings_count || listings?.length || 0}
             </Text>
-            <Text className="text-text-secondary">Listings</Text>
+            <Text style={styles.statLabel}>Listings</Text>
           </View>
-          <View className="bg-gray-50 rounded-lg p-4 items-center">
-            <Text className="text-2xl font-bold text-brand">
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>
               {displayProfile.stats?.sold_count || 0}
             </Text>
-            <Text className="text-text-secondary">Sold</Text>
+            <Text style={styles.statLabel}>Sold</Text>
           </View>
-          <View className="bg-gray-50 rounded-lg p-4 items-center">
-            <Text className="text-2xl font-bold text-brand">
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>
               {displayProfile.stats?.rented_count || 0}
             </Text>
-            <Text className="text-text-secondary">Rented</Text>
+            <Text style={styles.statLabel}>Rented</Text>
           </View>
-          <View className="bg-gray-50 rounded-lg p-4 items-center">
-            <Text className="text-2xl font-bold text-brand">
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>
               {displayProfile.stats?.exchanged_count || 0}
             </Text>
-            <Text className="text-text-secondary">Exchanged</Text>
+            <Text style={styles.statLabel}>Exchanged</Text>
           </View>
         </View>
       </View>
 
       {/* Active Listings */}
-      <View className="bg-white p-6">
-        <Text className="text-lg font-bold text-brand mb-4">Active Listings</Text>
+      <View style={styles.listingsCard}>
+        <Text style={styles.sectionTitle}>Active Listings</Text>
         {listings?.length === 0 ? (
-          <Text className="text-text-muted">No active listings</Text>
+          <View style={styles.emptyState}>
+            <Ionicons name="cube-outline" size={48} color="#8B9393" />
+            <Text style={styles.emptyText}>No active listings</Text>
+          </View>
         ) : (
-          <View className="grid grid-cols-2 gap-4">
-            {listings?.map((item) => (
-              <Link key={item.id} href={`/listing/${item.id}`} asChild>
-                <Pressable className="bg-gray-50 rounded-xl overflow-hidden">
-                  <Image source={{ uri: item.images[0] }} className="w-full h-32" resizeMode="cover" />
-                  <View className="p-3">
-                    <Text className="text-text-primary font-semibold mb-1" numberOfLines={2}>
-                      {item.title}
-                    </Text>
-                    <Text className="text-brand font-bold">PKR {item.price.toLocaleString()}</Text>
-                  </View>
-                </Pressable>
-              </Link>
-            ))}
+          <View style={styles.listingsGrid}>
+            {listings?.map((item) => {
+              const conditionColor = getConditionColor(item.condition);
+              return (
+                <Link key={item.id} href={`/listing/${item.id}`} asChild>
+                  <TouchableOpacity style={styles.listingCard} activeOpacity={0.7}>
+                    <View style={styles.listingImageContainer}>
+                      <Image
+                        source={{ uri: item.images[0] || 'https://via.placeholder.com/300x400' }}
+                        style={styles.listingImage}
+                        resizeMode="cover"
+                      />
+                    </View>
+                    <View style={styles.listingInfo}>
+                      <Text style={styles.listingPrice}>
+                        PKR {item.price.toLocaleString()}
+                      </Text>
+                      <Text style={styles.listingTitle} numberOfLines={2}>
+                        {item.title}
+                      </Text>
+                      <View style={styles.listingMeta}>
+                        <View style={[styles.conditionBadge, { backgroundColor: conditionColor + '20' }]}>
+                          <Text style={[styles.conditionText, { color: conditionColor }]}>
+                            {item.condition}
+                          </Text>
+                        </View>
+                        <Text style={styles.listingLocation}>
+                          {item.city}
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                </Link>
+              );
+            })}
           </View>
         )}
       </View>
 
       {isOwnProfile && (
         <Link href="/orders" asChild>
-          <Pressable className="bg-white p-4 mt-4 border-t border-gray-200">
-            <Text className="text-text-primary font-semibold text-center">View Order History</Text>
-          </Pressable>
+          <TouchableOpacity style={styles.orderHistoryButton}>
+            <Ionicons name="receipt-outline" size={20} color="#090A0A" />
+            <Text style={styles.orderHistoryText}>View Order History</Text>
+            <Ionicons name="chevron-forward" size={20} color="#8B9393" />
+          </TouchableOpacity>
         </Link>
       )}
     </ScrollView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F7F7F7',
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#8B9393',
+  },
+  coverBanner: {
+    height: 120,
+    backgroundColor: '#FF7A1A',
+  },
+  profileHeader: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingTop: 60,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  avatarContainer: {
+    position: 'absolute',
+    left: 16,
+    top: 60,
+  },
+  editAvatarButton: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  avatar: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarPlaceholder: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#FF7A1A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  avatarText: {
+    color: '#FFFFFF',
+    fontSize: 36,
+    fontWeight: 'bold',
+  },
+  profileInfo: {
+    marginLeft: 112,
+    marginBottom: 16,
+  },
+  profileName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#090A0A',
+    marginBottom: 4,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
+  locationText: {
+    fontSize: 14,
+    color: '#8B9393',
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  ratingText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#090A0A',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  saveButton: {
+    flex: 1,
+    backgroundColor: '#FF7A1A',
+    borderRadius: 20,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: '#F7F7F7',
+    borderRadius: 20,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: '#090A0A',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  editButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#F7F7F7',
+    borderRadius: 20,
+    paddingVertical: 12,
+  },
+  editButtonText: {
+    color: '#090A0A',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  logoutButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 20,
+    paddingVertical: 12,
+  },
+  logoutButtonText: {
+    color: '#DC2626',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  messageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#FF7A1A',
+    borderRadius: 20,
+    paddingVertical: 12,
+  },
+  messageButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  walletCard: {
+    backgroundColor: '#FFFFFF',
+    margin: 16,
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+  },
+  walletHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  walletTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#090A0A',
+  },
+  walletBalance: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#090A0A',
+    marginBottom: 16,
+  },
+  withdrawButton: {
+    backgroundColor: '#FF7A1A',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  withdrawButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  statsCard: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#090A0A',
+    marginBottom: 16,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  statItem: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#F7F7F7',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FF7A1A',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 14,
+    color: '#8B9393',
+  },
+  listingsCard: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    gap: 12,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#8B9393',
+  },
+  listingsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  listingCard: {
+    width: '48%',
+    backgroundColor: '#F7F7F7',
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+  },
+  listingImageContainer: {
+    aspectRatio: 3/4,
+  },
+  listingImage: {
+    width: '100%',
+    height: '100%',
+  },
+  listingInfo: {
+    padding: 12,
+    gap: 4,
+  },
+  listingPrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#090A0A',
+  },
+  listingTitle: {
+    fontSize: 14,
+    color: '#090A0A',
+    lineHeight: 18,
+  },
+  listingMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  conditionBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  conditionText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  listingLocation: {
+    fontSize: 12,
+    color: '#8B9393',
+  },
+  orderHistoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 16,
+    marginBottom: 24,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E5E5',
+  },
+  orderHistoryText: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#090A0A',
+    marginLeft: 12,
+  },
+  editNameInput: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#090A0A',
+    marginBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  editCityInput: {
+    fontSize: 14,
+    color: '#8B9393',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+});
