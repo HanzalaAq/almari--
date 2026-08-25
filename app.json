@@ -4,13 +4,7 @@
     "slug": "almari",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FF7A1A"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -19,14 +13,9 @@
       "bundleIdentifier": "com.almari.app"
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#FF7A1A"
-      },
       "package": "com.almari.app"
     },
     "web": {
-      "favicon": "./assets/favicon.png",
       "bundler": "metro"
     },
     "plugins": [
