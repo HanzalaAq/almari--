@@ -11,6 +11,15 @@ interface Listing {
   rent_price: number;
   images: string[];
   city: string;
+  seller_id?: string;
+}
+
+interface RentalBreakdown {
+  days: number;
+  rentalCost: number;
+  deposit: number;
+  platformFee: number;
+  total: number;
 }
 
 export default function RentBookingScreen() {
@@ -35,14 +44,14 @@ export default function RentBookingScreen() {
     },
   });
 
-  const calculateTotal = () => {
-    if (!listing?.rent_price || !startDate || !endDate) return 0;
+  const calculateTotal = (): RentalBreakdown | null => {
+    if (!listing?.rent_price || !startDate || !endDate) return null;
 
     const start = new Date(startDate);
     const end = new Date(endDate);
     const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 
-    if (days <= 0) return 0;
+    if (days <= 0) return null;
 
     const rentalCost = listing.rent_price * days;
     const deposit = rentalCost * 0.5; // 50% deposit
@@ -70,7 +79,7 @@ export default function RentBookingScreen() {
     }
 
     const breakdown = calculateTotal();
-    if (breakdown.days <= 0) {
+    if (!breakdown || breakdown.days <= 0) {
       Alert.alert('Error', 'Invalid date range');
       return;
     }
@@ -150,7 +159,7 @@ export default function RentBookingScreen() {
         </View>
 
         {/* Price Breakdown */}
-        {breakdown.days > 0 && (
+        {breakdown && breakdown.days > 0 && (
           <View className="bg-gray-50 rounded-xl p-4 mb-6">
             <Text className="text-lg font-bold text-brand mb-4">Price Breakdown</Text>
 
@@ -185,7 +194,7 @@ export default function RentBookingScreen() {
         {/* Book Button */}
         <Pressable
           onPress={handleBook}
-          disabled={loading || breakdown.days <= 0}
+          disabled={loading || !breakdown || breakdown.days <= 0}
           className="bg-brand rounded-full py-4 items-center"
         >
           <Text className="text-white font-semibold text-lg">

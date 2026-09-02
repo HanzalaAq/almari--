@@ -1,24 +1,29 @@
-import React from 'react';
+import { ActivityIndicator, View } from 'react-native';
 
 interface LoadingSpinnerProps {
   size?: 'sm' | 'md' | 'lg';
   className?: string;
+  color?: string;
 }
 
-export default function LoadingSpinner({ size = 'md', className = '' }: LoadingSpinnerProps) {
-  const sizeStyles = {
-    sm: 'w-4 h-4',
-    md: 'w-8 h-8',
-    lg: 'w-12 h-12',
-  };
+const sizeMap = {
+  sm: 16,
+  md: 28,
+  lg: 40,
+};
 
+export default function LoadingSpinner({
+  size = 'md',
+  className = '',
+  color = '#007782',
+}: LoadingSpinnerProps) {
   return (
-    <div className={`flex items-center justify-center ${className}`}>
-      <div
-        className={`${sizeStyles[size]} border-4 border-gray-medium border-t-primary rounded-full animate-spin`}
-        role="status"
-        aria-label="Loading"
+    <View className={`items-center justify-center ${className}`}>
+      <ActivityIndicator
+        size={sizeMap[size]}
+        color={color}
+        accessibilityLabel="Loading"
       />
-    </div>
+    </View>
   );
 }

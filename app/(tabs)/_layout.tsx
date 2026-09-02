@@ -11,8 +11,8 @@ export default function TabsLayout() {
         screenOptions={{
           headerShown: false,
           tabBarStyle: Platform.OS === 'web' ? { display: 'none' } : undefined,
-          tabBar: Platform.OS === 'web' ? () => null : (props) => <MobileTabBar {...props} />,
         }}
+        tabBar={Platform.OS === 'web' ? () => null : (props: any) => <MobileTabBar {...props} />}
       >
         <Tabs.Screen
           name="index"

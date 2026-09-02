@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, Pressable, Image, Platform, Alert, TextInput, Modal, StyleSheet, useWindowDimensions } from 'react-native';
+import { View, Text, ScrollView, Pressable, Image, Platform, Alert, TextInput, Modal, StyleSheet, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { useEffect, useState } from 'react';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -240,8 +240,8 @@ export default function ListingDetailScreen() {
     },
   });
   useEffect(() => { if (listing) addItem({ id: listing.id, title: listing.title, price: listing.price, image: listing.images?.[0] || '' }); }, [listing, addItem]);
-  if (isLoading) return <View style={styles.loading}><Text style={styles.muted}>Loading item…</Text></View>;
-  if (!listing) return <View style={styles.loading}><Text style={styles.muted}>This item is no longer available.</Text></View>;
+  if (isLoading) return <View style={styles.loading}><ActivityIndicator size="large" color="#007782" /><Text style={styles.muted}>Loading item…</Text></View>;
+  if (!listing) return <View style={styles.loading}><Ionicons name="alert-circle-outline" size={48} color="#999" /><Text style={[styles.muted, { marginTop: 12, fontSize: 16, fontWeight: '600' }]}>This item is no longer available.</Text><Link href="/" asChild><Pressable style={{ marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, borderWidth: 1, borderColor: '#007782', borderRadius: 7 }}><Text style={{ color: '#007782', fontWeight: '700' }}>Back to Home</Text></Pressable></Link></View>;
   const own = user?.id === listing.user_id; const favourite = isFavorite(listing.id); const images = listing.images?.length ? listing.images : ['https://images.unsplash.com/photo-1529139574466-a303027c1d8b?auto=format&fit=crop&w=900&q=80'];
   const requireLogin = (callback: () => void) => { if (!user) { Alert.alert('Sign in required', 'Sign in to continue with this item.'); router.push('/(auth)/login'); return; } callback(); };
   const sendOffer = async () => { const amount = Number(offer); if (!amount || amount <= 0 || amount >= listing.price) { Alert.alert('Enter a valid offer', `Your offer must be less than ${money(listing.price)}.`); return; } setSending(true); const { error } = await supabase.from('offers').insert({ listing_id: listing.id, buyer_id: user!.id, amount }); setSending(false); if (error) { Alert.alert('Could not send offer', error.message); return; } setOfferOpen(false); setOffer(''); Alert.alert('Offer sent', 'The seller will be notified.'); };

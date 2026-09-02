@@ -10,8 +10,11 @@ export function useImagePicker() {
     setLoading(true);
     try {
       if (Platform.OS === 'web') {
-        // Web: Use file input
-        const input = document.createElement('input');
+        // Web: Use file input (document is only available on web)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const doc: any = (globalThis as any).document;
+        if (!doc) { setLoading(false); return; }
+        const input = doc.createElement('input');
         input.type = 'file';
         input.accept = 'image/*';
         input.onchange = (e: any) => {

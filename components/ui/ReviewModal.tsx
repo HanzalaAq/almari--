@@ -1,9 +1,14 @@
-'use client';
-
-import React, { useState } from 'react';
-import Button from './Button';
-import { Star, X } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import { useState } from 'react';
+import {
+  Modal as RNModal,
+  Pressable,
+  Text,
+  TextInput,
+  View,
+  ActivityIndicator,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { supabase } from '../../lib/supabase/client';
 
 interface ReviewModalProps {
   isOpen: boolean;
@@ -28,14 +33,11 @@ export default function ReviewModal({
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  
-  const supabase = createClient();
-  
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+
+  const handleSubmit = async () => {
     setSubmitting(true);
     setError('');
-    
+
     try {
       // Check if review already exists
       const { data: existingReview } = await supabase
@@ -44,26 +46,23 @@ export default function ReviewModal({
         .eq('order_id', orderId)
         .eq('reviewer_id', reviewerId)
         .single();
-      
+
       if (existingReview) {
         setError('You have already reviewed this order');
         setSubmitting(false);
         return;
       }
-      
-      // Create review
-      const { error } = await supabase
-        .from('reviews')
-        .insert({
-          order_id: orderId,
-          reviewer_id: reviewerId,
-          reviewee_id: revieweeId,
-          listing_id: listingId,
-          rating,
-          comment: comment.trim(),
-        });
-      
-      if (error) {
+
+      const { error: insertError } = await supabase.from('reviews').insert({
+        order_id: orderId,
+        reviewer_id: reviewerId,
+        reviewee_id: revieweeId,
+        listing_id: listingId,
+        rating,
+        comment: comment.trim(),
+      });
+
+      if (insertError) {
         setError('Failed to submit review');
       } else {
         onSuccess();
@@ -71,90 +70,157 @@ export default function ReviewModal({
         setRating(5);
         setComment('');
       }
-    } catch (err) {
+    } catch {
       setError('An error occurred');
     } finally {
       setSubmitting(false);
     }
   };
-  
-  if (!isOpen) return null;
-  
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-foreground">Leave a Review</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-light rounded-lg transition-colors"
+    <RNModal
+      visible={isOpen}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 16,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+        }}
+      >
+        <View
+          style={{
+            width: '100%',
+            maxWidth: 420,
+            backgroundColor: '#fff',
+            borderRadius: 16,
+            padding: 24,
+          }}
+        >
+          {/* Header */}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 16,
+            }}
           >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-        
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-foreground mb-2">Rating</label>
-            <div className="flex gap-2">
+            <Text style={{ fontSize: 20, fontWeight: '700', color: '#1F2937' }}>
+              Leave a Review
+            </Text>
+            <Pressable onPress={onClose} style={{ padding: 4 }}>
+              <Ionicons name="close" size={22} color="#6B7280" />
+            </Pressable>
+          </View>
+
+          {/* Star rating */}
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8 }}>
+              Rating
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
               {[1, 2, 3, 4, 5].map((star) => (
-                <button
+                <Pressable
                   key={star}
-                  type="button"
-                  onClick={() => setRating(star)}
-                  className="focus:outline-none"
+                  onPress={() => setRating(star)}
+                  style={{ padding: 2 }}
                 >
-                  <Star
-                    className={`w-8 h-8 ${
-                      star <= rating
-                        ? 'fill-yellow-400 text-yellow-400'
-                        : 'text-gray-medium'
-                    }`}
+                  <Ionicons
+                    name={star <= rating ? 'star' : 'star-outline'}
+                    size={32}
+                    color={star <= rating ? '#F59E0B' : '#D1D5DB'}
                   />
-                </button>
+                </Pressable>
               ))}
-            </div>
-          </div>
-          
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-foreground mb-2">
+            </View>
+          </View>
+
+          {/* Comment */}
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8 }}>
               Comment (optional)
-            </label>
-            <textarea
+            </Text>
+            <TextInput
               value={comment}
-              onChange={(e) => setComment(e.target.value)}
+              onChangeText={setComment}
               placeholder="Share your experience..."
-              rows={4}
-              className="w-full px-4 py-2 border border-gray-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+              style={{
+                borderWidth: 1,
+                borderColor: '#D1D5DB',
+                borderRadius: 10,
+                padding: 12,
+                fontSize: 14,
+                color: '#1F2937',
+                minHeight: 80,
+              }}
             />
-          </div>
-          
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
-              {error}
-            </div>
-          )}
-          
-          <div className="flex gap-3">
-            <Button
-              type="submit"
-              variant="primary"
-              className="flex-1"
-              disabled={submitting}
+          </View>
+
+          {/* Error */}
+          {error ? (
+            <View
+              style={{
+                backgroundColor: '#FEF2F2',
+                borderWidth: 1,
+                borderColor: '#FECACA',
+                borderRadius: 10,
+                padding: 12,
+                marginBottom: 16,
+              }}
             >
-              {submitting ? 'Submitting...' : 'Submit Review'}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
+              <Text style={{ color: '#DC2626', fontSize: 14 }}>{error}</Text>
+            </View>
+          ) : null}
+
+          {/* Actions */}
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <Pressable
+              onPress={handleSubmit}
               disabled={submitting}
+              style={{
+                flex: 1,
+                backgroundColor: submitting ? '#93C5C8' : '#007782',
+                borderRadius: 10,
+                paddingVertical: 14,
+                alignItems: 'center',
+              }}
             >
-              Cancel
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+              {submitting ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>
+                  Submit Review
+                </Text>
+              )}
+            </Pressable>
+            <Pressable
+              onPress={onClose}
+              disabled={submitting}
+              style={{
+                flex: 1,
+                borderWidth: 1,
+                borderColor: '#D1D5DB',
+                borderRadius: 10,
+                paddingVertical: 14,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#374151', fontWeight: '700', fontSize: 15 }}>
+                Cancel
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </RNModal>
   );
 }

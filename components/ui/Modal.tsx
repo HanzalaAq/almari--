@@ -1,7 +1,5 @@
-'use client';
-
-import React, { useEffect } from 'react';
-import { X } from 'lucide-react';
+import { Modal as RNModal, Pressable, ScrollView, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 interface ModalProps {
   isOpen: boolean;
@@ -11,6 +9,13 @@ interface ModalProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
+const sizeMap = {
+  sm: 380,
+  md: 480,
+  lg: 640,
+  xl: 800,
+};
+
 export default function Modal({
   isOpen,
   onClose,
@@ -18,56 +23,75 @@ export default function Modal({
   children,
   size = 'md',
 }: ModalProps) {
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
-  const sizeStyles = {
-    sm: 'max-w-md',
-    md: 'max-w-lg',
-    lg: 'max-w-2xl',
-    xl: 'max-w-4xl',
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      
-      {/* Modal */}
-      <div className={`relative w-full ${sizeStyles[size]} bg-white rounded-xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col`}>
-        {/* Header */}
-        {title && (
-          <div className="flex items-center justify-between p-4 border-b border-gray-medium">
-            <h2 className="text-xl font-semibold text-foreground">{title}</h2>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-light rounded-lg transition-colors"
-              aria-label="Close modal"
+    <RNModal
+      visible={isOpen}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 16,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+        }}
+      >
+        <Pressable
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+          onPress={onClose}
+        />
+        <View
+          style={{
+            width: '100%',
+            maxWidth: sizeMap[size],
+            maxHeight: '90%',
+            backgroundColor: '#fff',
+            borderRadius: 16,
+            overflow: 'hidden',
+          }}
+        >
+          {/* Header */}
+          {title && (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingHorizontal: 16,
+                paddingVertical: 14,
+                borderBottomWidth: 1,
+                borderBottomColor: '#E5E7EB',
+              }}
             >
-              <X className="w-5 h-5 text-gray-dark" />
-            </button>
-          </div>
-        )}
-        
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {children}
-        </div>
-      </div>
-    </div>
+              <Text style={{ fontSize: 18, fontWeight: '700', color: '#1F2937' }}>
+                {title}
+              </Text>
+              <Pressable
+                onPress={onClose}
+                style={{
+                  padding: 6,
+                  borderRadius: 8,
+                }}
+                accessibilityLabel="Close modal"
+              >
+                <Ionicons name="close" size={20} color="#6B7280" />
+              </Pressable>
+            </View>
+          )}
+
+          {/* Content */}
+          <ScrollView
+            style={{ padding: 16 }}
+            contentContainerStyle={{ gap: 12 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {children}
+          </ScrollView>
+        </View>
+      </View>
+    </RNModal>
   );
 }

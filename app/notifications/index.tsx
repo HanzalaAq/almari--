@@ -1,9 +1,13 @@
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { useState } from 'react';
+import { Redirect } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase/client';
 import { useAuthStore } from '../../store/useAuthStore';
 import { useNotificationsStore } from '../../store/useNotificationsStore';
 import { Ionicons } from '@expo/vector-icons';
+import { Platform } from 'react-native';
+import { WebNavbar } from '../../components/layout/WebNavbar';
 
 const ICON_MAP: Record<string, keyof typeof Ionicons.glyphMap> = {
   favorite: 'heart',
@@ -27,10 +31,23 @@ function timeAgo(dateStr: string): string {
 }
 
 export default function NotificationsScreen() {
-  const { user } = useAuthStore();
+  const { user, isAuthLoading } = useAuthStore();
   const { markAsRead, markAllAsRead } = useNotificationsStore();
+  const [actionError, setActionError] = useState('');
 
-  const { data: notifications, isLoading } = useQuery({
+  if (isAuthLoading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F9F9' }}>
+        <ActivityIndicator size="large" color="#007782" />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return <Redirect href="/(auth)/login" />;
+  }
+
+  const { data: notifications, isLoading, isError, refetch } = useQuery({
     queryKey: ['notifications', user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
@@ -48,7 +65,12 @@ export default function NotificationsScreen() {
 
   const handleMarkAsRead = async (notification: any) => {
     if (notification.read) return;
-    await supabase.from('notifications').update({ read: true }).eq('id', notification.id);
+    setActionError('');
+    const { error } = await supabase.from('notifications').update({ read: true }).eq('id', notification.id);
+    if (error) {
+      setActionError('Could not mark as read');
+      return;
+    }
     markAsRead(notification.id);
   };
 
@@ -56,7 +78,12 @@ export default function NotificationsScreen() {
     if (!user?.id || !notifications?.length) return;
     const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id);
     if (unreadIds.length === 0) return;
-    await supabase.from('notifications').update({ read: true }).in('id', unreadIds);
+    setActionError('');
+    const { error } = await supabase.from('notifications').update({ read: true }).in('id', unreadIds);
+    if (error) {
+      setActionError('Could not mark all as read');
+      return;
+    }
     markAllAsRead();
   };
 
@@ -64,6 +91,7 @@ export default function NotificationsScreen() {
 
   return (
     <View className="flex-1 bg-white">
+      {Platform.OS === 'web' && <WebNavbar />}
       <View className="p-4 border-b border-gray-200 flex flex-row items-center justify-between">
         <Text className="text-xl font-bold text-brand">Notifications</Text>
         {unreadCount > 0 && (
@@ -73,10 +101,30 @@ export default function NotificationsScreen() {
         )}
       </View>
 
+      {actionError ? (
+        <View className="mx-4 mt-2 p-3 bg-red-50 rounded-lg flex flex-row items-center">
+          <Ionicons name="alert-circle-outline" size={18} color="#DC2626" />
+          <Text className="text-red-600 text-sm ml-2 flex-1">{actionError}</Text>
+          <Pressable onPress={() => setActionError('')}>
+            <Ionicons name="close" size={16} color="#DC2626" />
+          </Pressable>
+        </View>
+      ) : null}
+
       <ScrollView className="flex-1">
         {isLoading ? (
-          <View className="p-4">
-            <Text className="text-text-muted">Loading...</Text>
+          <View className="items-center justify-center py-16">
+            <ActivityIndicator size="large" color="#007782" />
+            <Text className="text-text-muted mt-3">Loading notifications…</Text>
+          </View>
+        ) : isError ? (
+          <View className="flex-1 items-center justify-center pt-20">
+            <Ionicons name="cloud-offline-outline" size={48} color="#999" />
+            <Text className="text-text-primary mt-4 text-lg font-semibold">Could not load notifications</Text>
+            <Text className="text-text-muted mt-1 text-sm">Check your connection and try again.</Text>
+            <Pressable onPress={() => refetch()} className="mt-4 px-5 py-2.5 bg-brand rounded-lg">
+              <Text className="text-white font-semibold">Retry</Text>
+            </Pressable>
           </View>
         ) : !notifications || notifications.length === 0 ? (
           <View className="flex-1 items-center justify-center pt-20">

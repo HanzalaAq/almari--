@@ -137,7 +137,7 @@ export default function MessagesScreen() {
   if (Platform.OS === 'web') {
     // Web: Two-panel layout
     return (
-      <View className="flex-1 flex flex-row h-screen">
+      <View className="flex-1 flex flex-row">
         {/* Conversation List */}
         <View className="w-80 border-r border-gray-200 bg-white">
           <View className="p-4 border-b border-gray-200">
@@ -173,7 +173,7 @@ export default function MessagesScreen() {
                         {(conv.last_message || 'Start a conversation').substring(0, 30)}
                       </Text>
                     </View>
-                    {conv.unread_count > 0 && (
+                    {(conv.unread_count ?? 0) > 0 && (
                       <View className="bg-brand rounded-full w-5 h-5 items-center justify-center">
                         <Text className="text-white text-xs">{conv.unread_count}</Text>
                       </View>
@@ -214,14 +214,16 @@ export default function MessagesScreen() {
               </ScrollView>
               <View className="p-4 bg-white border-t border-gray-200 flex flex-row gap-3">
                 <TextInput
-                  className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-text-primary"
+                  className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-text-primary outline-none focus:border-brand"
                   placeholder="Type a message..."
                   value={messageText}
                   onChangeText={setMessageText}
+                  onSubmitEditing={() => { if (messageText.trim()) sendMessage.mutate(messageText) }}
+                  returnKeyType="send"
                 />
                 <Pressable
                   onPress={() => sendMessage.mutate(messageText)} disabled={!messageText.trim()}
-                  className="bg-brand px-6 py-2 rounded-lg"
+                  className={`px-6 py-2 rounded-lg ${!messageText.trim() ? 'bg-gray-300' : 'bg-brand'}`}
                 >
                   <Text className="text-white font-semibold">Send</Text>
                 </Pressable>
@@ -263,14 +265,16 @@ export default function MessagesScreen() {
         </ScrollView>
         <View className="p-4 bg-white border-t border-gray-200 flex flex-row gap-3">
           <TextInput
-            className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-text-primary"
+            className="flex-1 border border-gray-300 rounded-lg px-4 py-2 text-text-primary focus:border-brand"
             placeholder="Type a message..."
             value={messageText}
             onChangeText={setMessageText}
+            onSubmitEditing={() => { if (messageText.trim()) sendMessage.mutate(messageText) }}
+            returnKeyType="send"
           />
           <Pressable
-            onPress={() => sendMessage.mutate(messageText)}
-            className="bg-brand px-6 py-2 rounded-lg"
+            onPress={() => sendMessage.mutate(messageText)} disabled={!messageText.trim()}
+            className={`px-6 py-2 rounded-lg ${!messageText.trim() ? 'bg-gray-300' : 'bg-brand'}`}
           >
             <Text className="text-white font-semibold">Send</Text>
           </Pressable>
@@ -311,7 +315,7 @@ export default function MessagesScreen() {
                   {(conv.last_message || 'Start a conversation').substring(0, 40)}
                 </Text>
               </View>
-              {conv.unread_count > 0 && (
+              {(conv.unread_count ?? 0) > 0 && (
                 <View className="bg-brand rounded-full w-6 h-6 items-center justify-center">
                   <Text className="text-white text-sm">{conv.unread_count}</Text>
                 </View>

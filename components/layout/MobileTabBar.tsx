@@ -1,70 +1,83 @@
-import { View } from 'react-native';
-import { Tabs } from 'expo-router';
+import { View, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 const ACTIVE = '#007782';
 const INACTIVE = '#8B9393';
 
-export function MobileTabBar(props: any) {
+interface TabRoute {
+  key: string;
+  name: string;
+}
+
+interface TabDescriptor {
+  options: {
+    tabBarIcon?: (props: { color: string; size: number }) => React.ReactNode;
+    tabBarLabel?: string;
+    tabBarAccessibilityLabel?: string;
+    tabBarTestID?: string;
+  };
+}
+
+interface MobileTabBarProps {
+  state: {
+    index: number;
+    routes: TabRoute[];
+  };
+  descriptors: Record<string, TabDescriptor>;
+  navigation: {
+    navigate: (name: string) => void;
+  };
+}
+
+const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  index: 'home-outline',
+  search: 'search-outline',
+  sell: 'add-circle-outline',
+  messages: 'chatbubble-outline',
+  profile: 'person-outline',
+};
+
+export function MobileTabBar({ state, descriptors, navigation }: MobileTabBarProps) {
   return (
-    <View className="bg-white border-t border-gray-200">
-      <Tabs.TabBar
-        {...props}
-        screenOptions={{
-          tabBarActiveTintColor: ACTIVE,
-          tabBarInactiveTintColor: INACTIVE,
-          tabBarShowLabel: false,
-          tabBarStyle: {
-            backgroundColor: '#FFFFFF',
-            borderTopWidth: 0,
-            height: 50,
-          },
-          tabBarItemStyle: {
-            paddingVertical: 6,
-          },
-        }}
-      >
-        <Tabs.TabBarScreen
-          name="index"
-          options={{
-            tabBarIcon: ({ color, size }: any) => (
-              <Ionicons name="home-outline" size={size} color={color} />
-            ),
-          }}
-        />
-        <Tabs.TabBarScreen
-          name="search"
-          options={{
-            tabBarIcon: ({ color, size }: any) => (
-              <Ionicons name="search-outline" size={size} color={color} />
-            ),
-          }}
-        />
-        <Tabs.TabBarScreen
-          name="sell"
-          options={{
-            tabBarIcon: ({ color, size }: any) => (
-              <Ionicons name="add-circle-outline" size={size} color={color} />
-            ),
-          }}
-        />
-        <Tabs.TabBarScreen
-          name="messages"
-          options={{
-            tabBarIcon: ({ color, size }: any) => (
-              <Ionicons name="chatbubble-outline" size={size} color={color} />
-            ),
-          }}
-        />
-        <Tabs.TabBarScreen
-          name="profile"
-          options={{
-            tabBarIcon: ({ color, size }: any) => (
-              <Ionicons name="person-outline" size={size} color={color} />
-            ),
-          }}
-        />
-      </Tabs.TabBar>
+    <View
+      style={{
+        flexDirection: 'row',
+        backgroundColor: '#FFFFFF',
+        borderTopWidth: 1,
+        borderTopColor: '#E5E7EB',
+        height: 56,
+        alignItems: 'center',
+      }}
+    >
+      {state.routes.map((route, index) => {
+        const isFocused = state.index === index;
+        const color = isFocused ? ACTIVE : INACTIVE;
+        const descriptor = descriptors[route.key];
+        const icon = descriptor?.options?.tabBarIcon;
+        const iconName = ICONS[route.name] || 'ellipse-outline';
+
+        return (
+          <Pressable
+            key={route.key}
+            onPress={() => navigation.navigate(route.name)}
+            accessibilityRole="button"
+            accessibilityLabel={descriptor?.options?.tabBarAccessibilityLabel}
+            accessibilityState={isFocused ? { selected: true } : {}}
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 6,
+            }}
+          >
+            {icon ? (
+              icon({ color, size: 24 })
+            ) : (
+              <Ionicons name={iconName} size={24} color={color} />
+            )}
+          </Pressable>
+        );
+      })}
     </View>
   );
 }

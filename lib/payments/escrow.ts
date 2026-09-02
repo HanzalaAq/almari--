@@ -1,9 +1,10 @@
 /**
  * Mocked Escrow/Payment Service
  * 
- * This module simulates payment processing for Almari.
- * In production, this would integrate with Aasaan Pay or similar payment gateway.
- * For now, all operations are simulated with logging and mock responses.
+ * DEV-ONLY: This module simulates payment processing for Almari.
+ * NOT FOR PRODUCTION USE. In production, integrate with Aasaan Pay
+ * or a similar payment gateway via server-side API calls.
+ * All operations here are in-memory mocks that will be lost on restart.
  */
 
 export interface PaymentHoldRequest {
@@ -45,7 +46,7 @@ export async function hold(request: PaymentHoldRequest): Promise<PaymentResult> 
   });
 
   // Simulate payment processing delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  await new Promise<void>(resolve => setTimeout(resolve, 1000));
 
   const transactionId = `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -101,7 +102,7 @@ export async function release(orderId: string): Promise<PaymentResult> {
   const payout = escrow.amount - commission;
 
   // Simulate processing delay
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise<void>(resolve => setTimeout(resolve, 500));
 
   // Update escrow state
   escrow.status = 'released';
@@ -150,7 +151,7 @@ export async function refund(orderId: string): Promise<PaymentResult> {
   });
 
   // Simulate processing delay
-  await new Promise(resolve => setTimeout(resolve, 500));
+  await new Promise<void>(resolve => setTimeout(resolve, 500));
 
   // Update escrow state
   escrow.status = 'refunded';

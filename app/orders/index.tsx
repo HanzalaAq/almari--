@@ -1,5 +1,6 @@
-import { View, Text, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { useState } from 'react';
+import { Redirect } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase/client';
 import { useAuthStore } from '../../store/useAuthStore';
@@ -20,10 +21,23 @@ interface Order {
 }
 
 export default function OrdersScreen() {
-  const { user } = useAuthStore();
+  const { user, isAuthLoading } = useAuthStore();
   const [activeTab, setActiveTab] = useState<'active' | 'completed' | 'rentals' | 'exchanges'>('active');
+  const [actionError, setActionError] = useState('');
 
-  const { data: orders, isLoading } = useQuery({
+  if (isAuthLoading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F9F9' }}>
+        <ActivityIndicator size="large" color="#007782" />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return <Redirect href="/(auth)/login" />;
+  }
+
+  const { data: orders, isLoading, isError, refetch } = useQuery({
     queryKey: ['orders', user?.id, activeTab],
     queryFn: async () => {
       if (!user?.id) return [];
@@ -52,6 +66,7 @@ export default function OrdersScreen() {
   });
 
   const orderAction = async (orderId: string, action: 'ship' | 'received' | 'confirm' | 'cancel' | 'issue') => {
+    setActionError('');
     const { error } = await supabase.rpc('order_action', {
       p_order_id: orderId,
       p_action: action,
@@ -60,9 +75,10 @@ export default function OrdersScreen() {
     });
 
     if (error) {
-      Alert.alert('Could not update order', error.message);
+      setActionError(`Could not update order: ${error.message}`);
       return;
     }
+    refetch();
   };
 
   const renderOrderCard = (order: Order) => {
@@ -156,10 +172,28 @@ export default function OrdersScreen() {
         </ScrollView>
       </View>
 
+      {actionError ? (
+        <View className="mx-4 mt-2 p-3 bg-red-50 rounded-lg flex flex-row items-center">
+          <Text className="text-red-600 text-sm flex-1">{actionError}</Text>
+          <Pressable onPress={() => setActionError('')}>
+            <Text className="text-red-600 font-bold">✕</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <ScrollView className="flex-1 p-4">
         {isLoading ? (
           <View className="items-center justify-center py-12">
-            <Text className="text-text-muted">Loading...</Text>
+            <ActivityIndicator size="large" color="#007782" />
+            <Text className="text-text-muted mt-3">Loading orders…</Text>
+          </View>
+        ) : isError ? (
+          <View className="items-center justify-center py-16">
+            <Text className="text-text-primary text-lg font-semibold">Could not load orders</Text>
+            <Text className="text-text-muted mt-1 text-sm">Check your connection and try again.</Text>
+            <Pressable onPress={() => refetch()} className="mt-4 px-5 py-2.5 bg-brand rounded-lg">
+              <Text className="text-white font-semibold">Retry</Text>
+            </Pressable>
           </View>
         ) : orders?.length === 0 ? (
           <View className="items-center justify-center py-12">

@@ -1,7 +1,7 @@
-import { View, Text, ScrollView, Pressable, Image, TextInput, Alert, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, Pressable, Image, TextInput, Alert, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useState } from 'react';
-import { useLocalSearchParams, useRouter, Link } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { Redirect, useLocalSearchParams, useRouter, Link } from 'expo-router';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../../lib/supabase/client';
 import { useAuthStore } from '../../store/useAuthStore';
 import * as ImagePicker from 'expo-image-picker';
@@ -13,12 +13,6 @@ interface UserProfile {
   city: string;
   photo_url?: string;
   rating?: number;
-  stats?: {
-    listings_count: number;
-    sold_count: number;
-    rented_count: number;
-    exchanged_count: number;
-  };
 }
 
 interface Listing {
@@ -36,7 +30,8 @@ interface Listing {
 export default function ProfileScreen() {
   const { username } = useLocalSearchParams();
   const router = useRouter();
-  const { user, profile, logout, setProfile } = useAuthStore();
+  const queryClient = useQueryClient();
+  const { user, profile, logout, setProfile, isAuthLoading } = useAuthStore();
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(profile?.name || '');
   const [editCity, setEditCity] = useState(profile?.city || '');
@@ -45,7 +40,12 @@ export default function ProfileScreen() {
   const isOwnProfile = !username || username === user?.id;
   const targetUserId = isOwnProfile ? user?.id : username;
 
-  const { data: userProfile, isLoading } = useQuery({
+  // Route protection for own profile
+  if (isOwnProfile && !isAuthLoading && !user) {
+    return <Redirect href="/(auth)/login" />;
+  }
+
+  const { data: userProfile, isLoading, isError, refetch } = useQuery({
     queryKey: ['profile', targetUserId],
     queryFn: async () => {
       if (!targetUserId) return null;
@@ -86,13 +86,29 @@ export default function ProfileScreen() {
         .from('orders')
         .select('total_amount')
         .eq('seller_id', user.id)
-        .eq('status', 'confirmed');
+        .eq('status', 'completed');
 
       if (error) throw error;
-      const total = data?.reduce((sum, order) => sum + order.total_amount, 0) || 0;
+      const total = data?.reduce((sum, order) => sum + (order.total_amount || 0), 0) || 0;
       return total * 0.9;
     },
     enabled: isOwnProfile && !!user?.id,
+  });
+
+  // Compute stats from actual data
+  const { data: soldCount } = useQuery({
+    queryKey: ['user-sold-count', targetUserId],
+    queryFn: async () => {
+      if (!targetUserId) return 0;
+      const { count, error } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('seller_id', targetUserId)
+        .eq('status', 'completed');
+      if (error) return 0;
+      return count || 0;
+    },
+    enabled: !!targetUserId,
   });
 
   const handleSaveProfile = async () => {
@@ -110,11 +126,14 @@ export default function ProfileScreen() {
 
       setProfile({
         ...profile,
+        id: profile?.id || user?.id || '',
         name: editName,
         city: editCity,
         photo_url: editPhoto,
       });
       setIsEditing(false);
+      // Invalidate profile cache so it refetches
+      queryClient.invalidateQueries({ queryKey: ['profile', user?.id] });
       Alert.alert('Success', 'Profile updated');
     } catch (error: any) {
       Alert.alert('Error', error.message);
@@ -148,15 +167,27 @@ export default function ProfileScreen() {
     }
   };
 
-  if (isLoading) {
+  if (isAuthLoading || isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading...</Text>
+        <ActivityIndicator size="large" color="#007782" />
+        <Text style={styles.loadingText}>Loading profile…</Text>
       </View>
     );
   }
 
-  const displayProfile = isOwnProfile ? profile : userProfile;
+  if (isError) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={{ fontSize: 17, fontWeight: '700', color: '#1F2937' }}>Could not load profile</Text>
+        <Pressable onPress={() => refetch()} style={{ backgroundColor: '#007782', borderRadius: 8, paddingVertical: 12, paddingHorizontal: 24, marginTop: 16 }}>
+          <Text style={{ color: '#fff', fontWeight: '700' }}>Try again</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  const displayProfile = isOwnProfile ? (userProfile || profile) : userProfile;
 
   if (!displayProfile) {
     return (
@@ -187,7 +218,7 @@ export default function ProfileScreen() {
           ) : (
             <View style={styles.avatarPlaceholder}>
               {displayProfile.photo_url ? (
-                <Image source={{ uri: displayProfile.photo_url }} style={styles.avatar} cache="force-cache" />
+                <Image source={{ uri: displayProfile.photo_url }} style={styles.avatar} />
               ) : (
                 <Text style={styles.avatarText}>
                   {displayProfile.name.charAt(0).toUpperCase()}
@@ -258,8 +289,8 @@ export default function ProfileScreen() {
                   <Text style={styles.editButtonText}>Edit</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => {
-                    logout();
+                  onPress={async () => {
+                    await logout();
                     router.replace('/(auth)/login');
                   }}
                   style={styles.logoutButton}
@@ -302,25 +333,25 @@ export default function ProfileScreen() {
         <View style={styles.statsGrid}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>
-              {displayProfile.stats?.listings_count || listings?.length || 0}
+              {listings?.length || 0}
             </Text>
             <Text style={styles.statLabel}>Listings</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>
-              {displayProfile.stats?.sold_count || 0}
+              {soldCount || 0}
             </Text>
             <Text style={styles.statLabel}>Sold</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>
-              {displayProfile.stats?.rented_count || 0}
+              0
             </Text>
             <Text style={styles.statLabel}>Rented</Text>
           </View>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>
-              {displayProfile.stats?.exchanged_count || 0}
+              0
             </Text>
             <Text style={styles.statLabel}>Exchanged</Text>
           </View>
@@ -391,100 +422,123 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F7F7',
+    backgroundColor: '#F9FAFB',
   },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#F9FAFB',
   },
   loadingText: {
     fontSize: 16,
-    color: '#8B9393',
+    color: '#6B7280',
   },
   coverBanner: {
-    height: 120,
-    backgroundColor: '#FF7A1A',
+    height: 160,
+    backgroundColor: '#007782',
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    shadowColor: '#007782',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
   },
   profileHeader: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingTop: 60,
-    paddingBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    marginHorizontal: 16,
+    marginTop: -60,
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 64,
+    paddingBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
   },
   avatarContainer: {
     position: 'absolute',
-    left: 16,
-    top: 60,
+    left: '50%',
+    top: -50,
+    transform: [{ translateX: -50 }],
   },
   editAvatarButton: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     overflow: 'hidden',
-    borderWidth: 3,
+    borderWidth: 4,
     borderColor: '#FFFFFF',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
   },
   avatar: {
     width: '100%',
     height: '100%',
   },
   avatarPlaceholder: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: '#FF7A1A',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#009494',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 3,
+    borderWidth: 4,
     borderColor: '#FFFFFF',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
   },
   avatarText: {
     color: '#FFFFFF',
-    fontSize: 36,
-    fontWeight: 'bold',
+    fontSize: 40,
+    fontWeight: '800',
   },
   profileInfo: {
-    marginLeft: 112,
-    marginBottom: 16,
+    alignItems: 'center',
+    marginBottom: 20,
   },
   profileName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#090A0A',
-    marginBottom: 4,
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 6,
+    letterSpacing: -0.5,
   },
   locationRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginBottom: 4,
+    marginBottom: 8,
   },
   locationText: {
-    fontSize: 14,
-    color: '#8B9393',
+    fontSize: 15,
+    color: '#6B7280',
+    fontWeight: '500',
   },
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
   },
   ratingText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#090A0A',
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#92400E',
   },
   actionButtons: {
     flexDirection: 'row',
@@ -492,27 +546,32 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     flex: 1,
-    backgroundColor: '#FF7A1A',
-    borderRadius: 20,
-    paddingVertical: 12,
+    backgroundColor: '#007782',
+    borderRadius: 16,
+    paddingVertical: 14,
     alignItems: 'center',
+    shadowColor: '#007782',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   saveButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   cancelButton: {
     flex: 1,
-    backgroundColor: '#F7F7F7',
-    borderRadius: 20,
-    paddingVertical: 12,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
+    paddingVertical: 14,
     alignItems: 'center',
   },
   cancelButtonText: {
-    color: '#090A0A',
+    color: '#374151',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   editButton: {
     flex: 1,
@@ -520,14 +579,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#F7F7F7',
-    borderRadius: 20,
-    paddingVertical: 12,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 16,
+    paddingVertical: 14,
   },
   editButtonText: {
-    color: '#090A0A',
+    color: '#111827',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   logoutButton: {
     flex: 1,
@@ -536,78 +595,100 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     backgroundColor: '#FEF2F2',
-    borderRadius: 20,
-    paddingVertical: 12,
+    borderRadius: 16,
+    paddingVertical: 14,
   },
   logoutButtonText: {
     color: '#DC2626',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   messageButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#FF7A1A',
-    borderRadius: 20,
-    paddingVertical: 12,
+    backgroundColor: '#007782',
+    borderRadius: 16,
+    paddingVertical: 14,
+    shadowColor: '#007782',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   messageButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   walletCard: {
     backgroundColor: '#FFFFFF',
     margin: 16,
-    padding: 20,
-    borderRadius: 16,
+    padding: 24,
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 5,
     borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderColor: '#F3F4F6',
   },
   walletHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 8,
+    marginBottom: 12,
   },
   walletTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#090A0A',
+    fontWeight: '700',
+    color: '#374151',
   },
   walletBalance: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#090A0A',
-    marginBottom: 16,
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 20,
+    letterSpacing: -1,
   },
   withdrawButton: {
-    backgroundColor: '#FF7A1A',
-    borderRadius: 12,
+    backgroundColor: '#111827',
+    borderRadius: 16,
     paddingVertical: 14,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   withdrawButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   statsCard: {
     backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
     marginBottom: 16,
-    padding: 20,
-    borderRadius: 16,
+    padding: 24,
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 5,
     borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderColor: '#F3F4F6',
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#090A0A',
-    marginBottom: 16,
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 20,
+    letterSpacing: -0.5,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -617,90 +698,108 @@ const styles = StyleSheet.create({
   statItem: {
     flex: 1,
     minWidth: '45%',
-    backgroundColor: '#F7F7F7',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 16,
+    padding: 20,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
   },
   statValue: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FF7A1A',
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#007782',
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 14,
-    color: '#8B9393',
+    fontWeight: '600',
+    color: '#6B7280',
   },
   listingsCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'transparent',
     marginHorizontal: 16,
     marginBottom: 16,
-    padding: 20,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
+    paddingTop: 8,
   },
   emptyState: {
     alignItems: 'center',
-    paddingVertical: 32,
-    gap: 12,
+    paddingVertical: 48,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
   },
   emptyText: {
+    marginTop: 12,
     fontSize: 16,
-    color: '#8B9393',
+    fontWeight: '500',
+    color: '#9CA3AF',
   },
   listingsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 16,
   },
   listingCard: {
-    width: '48%',
-    backgroundColor: '#F7F7F7',
-    borderRadius: 12,
+    width: '47.5%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
     borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderColor: '#F3F4F6',
   },
   listingImageContainer: {
     aspectRatio: 3/4,
+    backgroundColor: '#F3F4F6',
   },
   listingImage: {
     width: '100%',
     height: '100%',
   },
   listingInfo: {
-    padding: 12,
-    gap: 4,
+    padding: 14,
+    gap: 6,
   },
   listingPrice: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#090A0A',
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111827',
   },
   listingTitle: {
     fontSize: 14,
-    color: '#090A0A',
-    lineHeight: 18,
+    fontWeight: '500',
+    color: '#4B5563',
+    lineHeight: 20,
   },
   listingMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    marginTop: 4,
   },
   conditionBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
   conditionText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   listingLocation: {
     fontSize: 12,
-    color: '#8B9393',
+    fontWeight: '500',
+    color: '#9CA3AF',
   },
   orderHistoryButton: {
     flexDirection: 'row',
@@ -708,31 +807,41 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: '#FFFFFF',
     marginHorizontal: 16,
-    marginBottom: 24,
-    padding: 16,
-    borderRadius: 16,
+    marginBottom: 32,
+    padding: 20,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 3,
     borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderColor: '#F3F4F6',
   },
   orderHistoryText: {
     flex: 1,
     fontSize: 16,
-    fontWeight: '600',
-    color: '#090A0A',
+    fontWeight: '700',
+    color: '#111827',
     marginLeft: 12,
   },
   editNameInput: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#090A0A',
-    marginBottom: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: '#007782',
+    textAlign: 'center',
+    minWidth: 150,
   },
   editCityInput: {
-    fontSize: 14,
-    color: '#8B9393',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
+    fontSize: 15,
+    color: '#4B5563',
+    fontWeight: '500',
+    borderBottomWidth: 2,
+    borderBottomColor: '#007782',
+    textAlign: 'center',
+    minWidth: 120,
   },
 });
