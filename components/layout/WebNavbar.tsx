@@ -58,7 +58,7 @@ export function WebNavbar() {
       }}
       className="bg-white/80 backdrop-blur-xl border-b border-border/50 sticky top-0 z-50 shadow-md shadow-brand/5"
     >
-      <View className="w-full px-6 py-3 flex-row items-center">
+      <View className="w-full px-6 py-3 flex-row items-center justify-between">
         {/* Logo */}
         <Link href="/" asChild>
           <Pressable accessibilityRole="link" className="flex-row items-center gap-3">
@@ -74,7 +74,7 @@ export function WebNavbar() {
 
         {/* Search bar (center, hidden on compact) */}
         {!compact && (
-          <View className="absolute left-1/2 -translate-x-1/2 w-[min(40vw,500px)]">
+          <View className="flex-1 max-w-[500px] mx-8">
             <View className="flex-row items-center bg-surface border border-border/60 rounded-full px-4 py-2.5 shadow-inner">
               <Ionicons name="search-outline" size={20} color="#647777" />
               <TextInput
@@ -97,7 +97,7 @@ export function WebNavbar() {
         )}
 
         {/* Right side actions */}
-        <View className="ml-auto flex-row items-center gap-2">
+        <View className="flex-row items-center gap-3">
           {user ? (
             <>
               <NavAction
