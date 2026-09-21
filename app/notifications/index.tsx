@@ -35,18 +35,6 @@ export default function NotificationsScreen() {
   const { markAsRead, markAllAsRead } = useNotificationsStore();
   const [actionError, setActionError] = useState('');
 
-  if (isAuthLoading) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F9F9' }}>
-        <ActivityIndicator size="large" color="#007782" />
-      </View>
-    );
-  }
-
-  if (!user) {
-    return <Redirect href="/(auth)/login" />;
-  }
-
   const { data: notifications, isLoading, isError, refetch } = useQuery({
     queryKey: ['notifications', user?.id],
     queryFn: async () => {
@@ -62,6 +50,18 @@ export default function NotificationsScreen() {
     },
     enabled: !!user?.id,
   });
+
+  if (isAuthLoading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F9F9' }}>
+        <ActivityIndicator size="large" color="#007782" />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return <Redirect href="/(auth)/login" />;
+  }
 
   const handleMarkAsRead = async (notification: any) => {
     if (notification.read) return;

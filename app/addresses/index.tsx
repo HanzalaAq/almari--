@@ -10,17 +10,35 @@ import { WebFooter } from '../../components/layout/WebFooter';
 
 type Address = { id: string; full_name: string; phone: string; street: string; city: string; province: string; postal_code?: string; is_default: boolean };
 export default function AddressesScreen() {
-  const router = useRouter(); const queryClient = useQueryClient(); const { user, isAuthLoading } = useAuthStore();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { user, isAuthLoading } = useAuthStore();
+  const [form, setForm] = useState({ full_name: '', phone: '', street: '', city: '', province: '', postal_code: '' });
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState('');
+
+  const { data: addresses = [] } = useQuery({
+    queryKey: ['shipping-addresses', user?.id],
+    enabled: !!user?.id,
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { data, error } = await supabase.from('shipping_addresses').select('*').eq('user_id', user.id).order('is_default', { ascending: false });
+      if (error) throw error;
+      return data as Address[];
+    },
+  });
 
   if (isAuthLoading) {
-    return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F9F9' }}><ActivityIndicator size="large" color="#007782" /></View>;
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F9F9' }}>
+        <ActivityIndicator size="large" color="#007782" />
+      </View>
+    );
   }
+
   if (!user) {
     return <Redirect href="/(auth)/login" />;
   }
-
-  const [form, setForm] = useState({ full_name:'', phone:'', street:'', city:'', province:'', postal_code:'' }); const [saving, setSaving] = useState(false); const [formError, setFormError] = useState('');
-  const { data: addresses = [] } = useQuery({ queryKey:['shipping-addresses',user?.id], enabled:!!user?.id, queryFn:async()=>{ const {data,error}=await supabase.from('shipping_addresses').select('*').eq('user_id',user!.id).order('is_default',{ascending:false}); if(error) throw error; return data as Address[]; } });
   const save = async () => { if (!user) { router.push('/(auth)/login'); return; } if (Object.values(form).slice(0,5).some((v: string) => !v.trim())) { setFormError('Name, phone, street, city and province are required.'); return; } setSaving(true); setFormError(''); if (!addresses.length) await supabase.from('shipping_addresses').update({is_default:false}).eq('user_id',user.id); const { error } = await supabase.from('shipping_addresses').insert({...form,user_id:user.id,is_default:addresses.length===0}); setSaving(false); if(error){setFormError(`Could not save address: ${error.message}`);return;} setForm({full_name:'',phone:'',street:'',city:'',province:'',postal_code:''});queryClient.invalidateQueries({queryKey:['shipping-addresses',user.id]}); };
   const makeDefault = async (id:string) => { if(!user)return; await supabase.from('shipping_addresses').update({is_default:false}).eq('user_id',user.id); const {error}=await supabase.from('shipping_addresses').update({is_default:true}).eq('id',id);if(error)setFormError(`Could not update: ${error.message}`);else queryClient.invalidateQueries({queryKey:['shipping-addresses',user.id]});};
   return <View style={styles.page}><WebNavbar/><ScrollView contentContainerStyle={styles.content}><Text style={styles.title}>Delivery addresses</Text><Text style={styles.intro}>Choose where your protected orders should be delivered.</Text>{formError?<View style={{backgroundColor:'#FEF2F2',borderRadius:8,padding:12,marginBottom:12,flexDirection:'row',alignItems:'center'}}><Text style={{color:'#DC2626',fontSize:13,flex:1}}>{formError}</Text><Pressable onPress={()=>setFormError('')}><Text style={{color:'#DC2626',fontWeight:'700'}}>✕</Text></Pressable></View>:null}{addresses.map(a=><View key={a.id} style={styles.card}><View style={styles.cardTop}><View><Text style={styles.name}>{a.full_name}{a.is_default?' · Default':''}</Text><Text style={styles.copy}>{a.street}, {a.city}, {a.province}</Text><Text style={styles.copy}>{a.phone}{a.postal_code?` · ${a.postal_code}`:''}</Text></View>{!a.is_default&&<Pressable onPress={()=>makeDefault(a.id)}><Text style={styles.defaultLink}>Make default</Text></Pressable>}</View></View>)}<View style={styles.form}><Text style={styles.formTitle}>Add a new address</Text><Field label="Full name" value={form.full_name} onChangeText={(v:string)=>setForm({...form,full_name:v})}/><Field label="Phone number" value={form.phone} onChangeText={(v:string)=>setForm({...form,phone:v})} keyboardType="phone-pad"/><Field label="Street address" value={form.street} onChangeText={(v:string)=>setForm({...form,street:v})}/><View style={styles.row}><View style={styles.half}><Field label="City" value={form.city} onChangeText={(v:string)=>setForm({...form,city:v})}/></View><View style={styles.half}><Field label="Province" value={form.province} onChangeText={(v:string)=>setForm({...form,province:v})}/></View></View><Field label="Postal code (optional)" value={form.postal_code} onChangeText={(v:string)=>setForm({...form,postal_code:v})}/><Pressable onPress={save} style={styles.save}><Text style={styles.saveText}>{saving?'Saving…':'Save address'}</Text></Pressable></View></ScrollView><WebFooter/></View>;

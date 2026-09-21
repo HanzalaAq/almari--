@@ -25,18 +25,6 @@ export default function OrdersScreen() {
   const [activeTab, setActiveTab] = useState<'active' | 'completed' | 'rentals' | 'exchanges'>('active');
   const [actionError, setActionError] = useState('');
 
-  if (isAuthLoading) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F9F9' }}>
-        <ActivityIndicator size="large" color="#007782" />
-      </View>
-    );
-  }
-
-  if (!user) {
-    return <Redirect href="/(auth)/login" />;
-  }
-
   const { data: orders, isLoading, isError, refetch } = useQuery({
     queryKey: ['orders', user?.id, activeTab],
     queryFn: async () => {
@@ -64,6 +52,18 @@ export default function OrdersScreen() {
     },
     enabled: !!user?.id,
   });
+
+  if (isAuthLoading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F9F9' }}>
+        <ActivityIndicator size="large" color="#007782" />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return <Redirect href="/(auth)/login" />;
+  }
 
   const orderAction = async (orderId: string, action: 'ship' | 'received' | 'confirm' | 'cancel' | 'issue') => {
     setActionError('');

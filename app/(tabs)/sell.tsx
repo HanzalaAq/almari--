@@ -1,4 +1,5 @@
-import { View, Text, ScrollView, Pressable, TextInput, Image, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, TextInput, Image, Alert, ActivityIndicator, Platform } from 'react-native';
+import { WebPressable } from '../../components/ui/WebPressable';
 import { useState } from 'react';
 import { Redirect, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -16,22 +17,10 @@ const CITIES = ['Karachi', 'Lahore', 'Islamabad', 'Rawalpindi', 'Faisalabad', 'M
 export default function SellScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { user, isAuthLoading } = useAuthStore();
+  const { user, profile, isAuthLoading } = useAuthStore();
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState('');
   const [uploadProgress, setUploadProgress] = useState('');
-
-  // Auth guard
-  if (isAuthLoading) {
-    return (
-      <View className="flex-1 items-center justify-center bg-surface">
-        <ActivityIndicator size="large" color="#007782" />
-      </View>
-    );
-  }
-  if (!user) {
-    return <Redirect href="/(auth)/login" />;
-  }
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
@@ -45,6 +34,18 @@ export default function SellScreen() {
   const [isExchangeable, setIsExchangeable] = useState(false);
   const [buyPrice, setBuyPrice] = useState('');
   const [rentPrice, setRentPrice] = useState('');
+
+  // Auth guard (must be called after all hooks to follow Rules of Hooks)
+  if (isAuthLoading) {
+    return (
+      <View className="flex-1 items-center justify-center bg-surface">
+        <ActivityIndicator size="large" color="#007782" />
+      </View>
+    );
+  }
+  if (!user) {
+    return <Redirect href="/(auth)/login" />;
+  }
 
   const pickImages = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -67,41 +68,98 @@ export default function SellScreen() {
       router.push('/(auth)/login');
       return;
     }
-    if (!title || !description || !category || !condition || !city) {
-      Alert.alert('Error', 'Please fill in all required fields');
+    if (!title.trim() || !description.trim() || !category || !condition || !city) {
+      setFormError('Please fill in all required fields (title, description, category, condition, and city).');
       return;
     }
     if (images.length === 0) {
-      Alert.alert('Error', 'Please add at least one image');
+      setFormError('Please add at least one photo of your item.');
       return;
     }
     if (isBuyable && !buyPrice) {
-      Alert.alert('Error', 'Please set a buy price');
+      setFormError('Please set a buy price.');
       return;
     }
     if (isRentable && !rentPrice) {
-      Alert.alert('Error', 'Please set a rent price');
+      setFormError('Please set a rent price.');
       return;
     }
 
     setLoading(true);
     setFormError('');
     try {
-      // Create listing first to get an ID for image paths
+      // Ensure the Supabase session is fresh so auth.uid() works in RLS policies.
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        setFormError('Your session has expired. Please sign in again.');
+        router.push('/(auth)/login');
+        return;
+      }
+
+      const authUserId = session.user.id;
+
+      // Safety net: ensure a row exists in public.users for this auth user
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', authUserId)
+        .maybeSingle();
+
+      if (!existingUser) {
+        const userName = profile?.name || session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User';
+        const userCity = profile?.city || session.user.user_metadata?.city || city;
+        const { error: insertUserError } = await supabase.from('users').insert({
+          id: authUserId,
+          name: userName,
+          city: userCity,
+        });
+        if (insertUserError) {
+          console.error('[Sell] User insert failed:', insertUserError.message);
+          throw insertUserError;
+        }
+      }
+
+      // Generate the listing ID up front
+      const generateUUID = () => {
+        const g = typeof globalThis !== 'undefined' ? (globalThis as any) : undefined;
+        if (typeof g?.crypto?.randomUUID === 'function') {
+          return g.crypto.randomUUID() as string;
+        }
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          const v = c === 'x' ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
+      };
+      const listingId = generateUUID();
+
+      // 1. Process and upload images first
+      const imageUrls: string[] = [];
+      for (let i = 0; i < images.length; i++) {
+        setUploadProgress(`Uploading photo ${i + 1} of ${images.length}…`);
+        const url = await uploadListingImage(images[i], authUserId, listingId, i);
+        imageUrls.push(url);
+      }
+
+      setUploadProgress('Publishing listing…');
+
+      // 2. Insert listing in a single atomic operation with images already populated
+      console.log('[Sell] Inserting listing with user_id:', authUserId, 'and images:', imageUrls.length);
       const { data: listing, error: insertError } = await supabase
         .from('listings')
         .insert({
-          user_id: user.id,
-          title,
-          description,
+          id: listingId,
+          user_id: authUserId,
+          title: title.trim(),
+          description: description.trim(),
           category,
           condition,
           size: size || null,
-          brand: brand || null,
+          brand: brand ? brand.trim() : null,
           city,
-          images: [],
-          price: isBuyable ? parseInt(buyPrice) : 0,
-          rental_price_per_day: isRentable ? parseInt(rentPrice) : null,
+          images: imageUrls,
+          price: isBuyable ? parseInt(buyPrice, 10) : 0,
+          rental_price_per_day: isRentable ? parseInt(rentPrice, 10) : null,
           is_rentable: isRentable,
           is_exchangeable: isExchangeable,
           status: 'active',
@@ -109,33 +167,19 @@ export default function SellScreen() {
         .select()
         .single();
 
-      if (insertError) throw insertError;
-
-      // Upload images to Supabase Storage
-      const imageUrls: string[] = [];
-      for (let i = 0; i < images.length; i++) {
-        setUploadProgress(`Uploading image ${i + 1} of ${images.length}…`);
-        const url = await uploadListingImage(images[i], user.id, listing.id, i);
-        imageUrls.push(url);
+      if (insertError) {
+        console.error('[Sell] Listing insert failed:', insertError.message);
+        throw insertError;
       }
 
-      setUploadProgress('Finalizing listing…');
-
-      // Update listing with image URLs
-      const { error: updateError } = await supabase
-        .from('listings')
-        .update({ images: imageUrls })
-        .eq('id', listing.id);
-
-      if (updateError) throw updateError;
-
-      // Invalidate listing caches so home and user listings refresh
+      // Invalidate listing caches so home, catalog, and user listings refresh immediately
       queryClient.invalidateQueries({ queryKey: ['home-listings'] });
       queryClient.invalidateQueries({ queryKey: ['user-listings'] });
       queryClient.invalidateQueries({ queryKey: ['catalogue'] });
 
       router.replace(`/listing/${listing.id}`);
     } catch (error: any) {
+      console.error('[Sell] Submission error:', error);
       setFormError(error.message || 'Could not publish your listing. Please try again.');
     } finally {
       setUploadProgress('');
@@ -160,21 +204,21 @@ export default function SellScreen() {
             {images.map((uri, index) => (
               <View key={index} className="relative">
                 <Image source={{ uri }} className="w-28 h-28 rounded-xl" />
-                <Pressable
+                <WebPressable
                   onPress={() => removeImage(index)}
                   className="absolute -top-3 -right-3 bg-error rounded-full w-8 h-8 items-center justify-center shadow-sm"
                 >
                   <Text className="text-white text-sm font-bold">✕</Text>
-                </Pressable>
+                </WebPressable>
               </View>
             ))}
             {images.length < 8 && (
-              <Pressable
+              <WebPressable
                 onPress={pickImages}
                 className="w-28 h-28 border-2 border-dashed border-gray-300 rounded-xl items-center justify-center bg-gray-50/50 hover:bg-gray-100 transition-colors"
               >
                 <Text className="text-text-muted text-2xl">+</Text>
-              </Pressable>
+              </WebPressable>
             )}
           </View>
           <Text className="text-text-muted text-sm mt-2">Up to 8 photos · Show the item clearly and accurately</Text>
@@ -214,7 +258,7 @@ export default function SellScreen() {
           <Text className="text-text-primary font-bold mb-2">Category *</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} className="pb-2">
             {CATEGORIES.map((cat) => (
-              <Pressable
+              <WebPressable
                 key={cat}
                 onPress={() => setCategory(cat)}
                 className={`mr-3 px-5 py-2.5 rounded-full border ${
@@ -222,7 +266,7 @@ export default function SellScreen() {
                 }`}
               >
                 <Text className={`font-bold ${category === cat ? 'text-white' : 'text-text-secondary'}`}>{cat}</Text>
-              </Pressable>
+              </WebPressable>
             ))}
           </ScrollView>
         </View>
@@ -232,7 +276,7 @@ export default function SellScreen() {
           <Text className="text-text-primary font-bold mb-2">Condition *</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} className="pb-2">
             {CONDITIONS.map((cond) => (
-              <Pressable
+              <WebPressable
                 key={cond}
                 onPress={() => setCondition(cond)}
                 className={`mr-3 px-5 py-2.5 rounded-full border ${
@@ -240,7 +284,7 @@ export default function SellScreen() {
                 }`}
               >
                 <Text className={`font-bold ${condition === cond ? 'text-white' : 'text-text-secondary'}`}>{cond}</Text>
-              </Pressable>
+              </WebPressable>
             ))}
           </ScrollView>
         </View>
@@ -249,16 +293,16 @@ export default function SellScreen() {
         <View className="mb-5">
           <Text className="text-text-primary font-bold mb-2">Size</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} className="pb-2">
-            <Pressable
+            <WebPressable
               onPress={() => setSize('')}
               className={`mr-3 px-5 py-2.5 rounded-full border ${
                 !size ? 'bg-brand border-brand shadow-sm shadow-brand/20' : 'bg-white border-gray-200 hover:border-brand/50'
               }`}
             >
               <Text className={`font-bold ${!size ? 'text-white' : 'text-text-secondary'}`}>N/A</Text>
-            </Pressable>
+            </WebPressable>
             {SIZES.map((s) => (
-              <Pressable
+              <WebPressable
                 key={s}
                 onPress={() => setSize(s)}
                 className={`mr-3 px-5 py-2.5 rounded-full border ${
@@ -266,7 +310,7 @@ export default function SellScreen() {
                 }`}
               >
                 <Text className={`font-bold ${size === s ? 'text-white' : 'text-text-secondary'}`}>{s}</Text>
-              </Pressable>
+              </WebPressable>
             ))}
           </ScrollView>
         </View>
@@ -287,7 +331,7 @@ export default function SellScreen() {
           <Text className="text-text-primary font-bold mb-2">City *</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} className="pb-2">
             {CITIES.map((c) => (
-              <Pressable
+              <WebPressable
                 key={c}
                 onPress={() => setCity(c)}
                 className={`mr-3 px-5 py-2.5 rounded-full border ${
@@ -295,7 +339,7 @@ export default function SellScreen() {
                 }`}
               >
                 <Text className={`font-bold ${city === c ? 'text-white' : 'text-text-secondary'}`}>{c}</Text>
-              </Pressable>
+              </WebPressable>
             ))}
           </ScrollView>
         </View>
@@ -305,14 +349,14 @@ export default function SellScreen() {
           <Text className="text-text-primary font-extrabold text-xl mb-4">Price & Availability</Text>
 
           <View className="flex flex-row items-center mb-4">
-            <Pressable
+            <WebPressable
               onPress={() => setIsBuyable(!isBuyable)}
               className={`w-6 h-6 rounded-md border-2 mr-3 items-center justify-center ${
                 isBuyable ? 'bg-brand border-brand' : 'border-gray-300'
               }`}
             >
               {isBuyable && <Text className="text-white text-xs font-bold">✓</Text>}
-            </Pressable>
+            </WebPressable>
             <Text className="text-text-primary font-bold">Sell this item</Text>
           </View>
           {isBuyable && (
@@ -328,14 +372,14 @@ export default function SellScreen() {
           )}
 
           <View className="flex flex-row items-center mb-4">
-            <Pressable
+            <WebPressable
               onPress={() => setIsRentable(!isRentable)}
               className={`w-6 h-6 rounded-md border-2 mr-3 items-center justify-center ${
                 isRentable ? 'bg-brand border-brand' : 'border-gray-300'
               }`}
             >
               {isRentable && <Text className="text-white text-xs font-bold">✓</Text>}
-            </Pressable>
+            </WebPressable>
             <Text className="text-text-primary font-bold">Rent this item</Text>
           </View>
           {isRentable && (
@@ -351,14 +395,14 @@ export default function SellScreen() {
           )}
 
           <View className="flex flex-row items-center">
-            <Pressable
+            <WebPressable
               onPress={() => setIsExchangeable(!isExchangeable)}
               className={`w-6 h-6 rounded-md border-2 mr-3 items-center justify-center ${
                 isExchangeable ? 'bg-brand border-brand' : 'border-gray-300'
               }`}
             >
               {isExchangeable && <Text className="text-white text-xs font-bold">✓</Text>}
-            </Pressable>
+            </WebPressable>
             <Text className="text-text-primary font-bold">Open to Exchange</Text>
           </View>
         </View>
@@ -384,7 +428,7 @@ export default function SellScreen() {
         ) : null}
 
         {/* Submit */}
-        <Pressable
+        <WebPressable
           onPress={handleSubmit}
           disabled={loading}
           className={`rounded-2xl py-4 items-center shadow-md shadow-brand/30 ${
@@ -394,7 +438,7 @@ export default function SellScreen() {
           <Text className="text-white font-extrabold text-lg tracking-wide">
             {loading ? 'Publishing…' : 'List Item'}
           </Text>
-        </Pressable>
+        </WebPressable>
       </View><WebFooter />
     </ScrollView>
   );

@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, Pressable, Image, TextInput, Alert, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, Pressable, Image, TextInput, Alert, StyleSheet, TouchableOpacity, ActivityIndicator, Modal } from 'react-native';
 import { useState } from 'react';
 import { Redirect, useLocalSearchParams, useRouter, Link } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -36,14 +36,41 @@ export default function ProfileScreen() {
   const [editName, setEditName] = useState(profile?.name || '');
   const [editCity, setEditCity] = useState(profile?.city || '');
   const [editPhoto, setEditPhoto] = useState<string | null>(profile?.photo_url || null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+  const [isDeletingListing, setIsDeletingListing] = useState(false);
+
+  const confirmDeleteListing = async () => {
+    if (!deleteTarget) return;
+    setIsDeletingListing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        Alert.alert('Sign in required', 'Please sign in to delete this ad.');
+        return;
+      }
+      const { error } = await supabase
+        .from('listings')
+        .delete()
+        .eq('id', deleteTarget.id)
+        .eq('user_id', session.user.id);
+
+      if (error) throw error;
+
+      queryClient.invalidateQueries({ queryKey: ['user-listings', targetUserId] });
+      queryClient.invalidateQueries({ queryKey: ['home-listings'] });
+      queryClient.invalidateQueries({ queryKey: ['catalogue'] });
+      queryClient.invalidateQueries({ queryKey: ['listing', deleteTarget.id] });
+      setDeleteTarget(null);
+      Alert.alert('Deleted', 'Your ad has been deleted.');
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Could not delete ad');
+    } finally {
+      setIsDeletingListing(false);
+    }
+  };
 
   const isOwnProfile = !username || username === user?.id;
   const targetUserId = isOwnProfile ? user?.id : username;
-
-  // Route protection for own profile
-  if (isOwnProfile && !isAuthLoading && !user) {
-    return <Redirect href="/(auth)/login" />;
-  }
 
   const { data: userProfile, isLoading, isError, refetch } = useQuery({
     queryKey: ['profile', targetUserId],
@@ -166,6 +193,11 @@ export default function ProfileScreen() {
       default: return '#9CA3AF';
     }
   };
+
+  // Route protection for own profile (must be called after all hooks)
+  if (isOwnProfile && !isAuthLoading && !user) {
+    return <Redirect href="/(auth)/login" />;
+  }
 
   if (isAuthLoading || isLoading) {
     return (
@@ -371,35 +403,50 @@ export default function ProfileScreen() {
             {listings?.map((item) => {
               const conditionColor = getConditionColor(item.condition);
               return (
-                <Link key={item.id} href={`/listing/${item.id}`} asChild>
-                  <TouchableOpacity style={styles.listingCard} activeOpacity={0.7}>
-                    <View style={styles.listingImageContainer}>
-                      <Image
-                        source={{ uri: item.images[0] || 'https://via.placeholder.com/300x400' }}
-                        style={styles.listingImage}
-                        resizeMode="cover"
-                      />
-                    </View>
-                    <View style={styles.listingInfo}>
-                      <Text style={styles.listingPrice}>
-                        PKR {item.price.toLocaleString()}
-                      </Text>
-                      <Text style={styles.listingTitle} numberOfLines={2}>
-                        {item.title}
-                      </Text>
-                      <View style={styles.listingMeta}>
-                        <View style={[styles.conditionBadge, { backgroundColor: conditionColor + '20' }]}>
-                          <Text style={[styles.conditionText, { color: conditionColor }]}>
-                            {item.condition}
+                <View key={item.id} style={{ position: 'relative' }}>
+                  <Link href={`/listing/${item.id}`} asChild>
+                    <TouchableOpacity style={styles.listingCard} activeOpacity={0.7}>
+                      <View style={styles.listingImageContainer}>
+                        <Image
+                          source={{ uri: item.images[0] || 'https://via.placeholder.com/300x400' }}
+                          style={styles.listingImage}
+                          resizeMode="cover"
+                        />
+                      </View>
+                      <View style={styles.listingInfo}>
+                        <Text style={styles.listingPrice}>
+                          PKR {item.price.toLocaleString()}
+                        </Text>
+                        <Text style={styles.listingTitle} numberOfLines={2}>
+                          {item.title}
+                        </Text>
+                        <View style={styles.listingMeta}>
+                          <View style={[styles.conditionBadge, { backgroundColor: conditionColor + '20' }]}>
+                            <Text style={[styles.conditionText, { color: conditionColor }]}>
+                              {item.condition}
+                            </Text>
+                          </View>
+                          <Text style={styles.listingLocation}>
+                            {item.city}
                           </Text>
                         </View>
-                        <Text style={styles.listingLocation}>
-                          {item.city}
-                        </Text>
                       </View>
-                    </View>
-                  </TouchableOpacity>
-                </Link>
+                    </TouchableOpacity>
+                  </Link>
+
+                  {isOwnProfile && (
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        setDeleteTarget({ id: item.id, title: item.title });
+                      }}
+                      style={styles.cardDeleteBtn}
+                      accessibilityLabel="Delete listing"
+                    >
+                      <Ionicons name="trash-outline" size={15} color="#D64C5B" />
+                    </TouchableOpacity>
+                  )}
+                </View>
               );
             })}
           </View>
@@ -415,6 +462,41 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </Link>
       )}
+
+      {/* Delete Listing Confirmation Modal */}
+      <Modal visible={!!deleteTarget} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.deleteModalContent}>
+            <View style={styles.deleteModalIcon}>
+              <Ionicons name="trash-outline" size={24} color="#D64C5B" />
+            </View>
+            <Text style={styles.deleteModalTitle}>Delete this ad?</Text>
+            <Text style={styles.deleteModalText}>
+              Are you sure you want to delete "{deleteTarget?.title}"? This cannot be undone.
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                onPress={() => setDeleteTarget(null)}
+                style={styles.deleteCancelBtn}
+                disabled={isDeletingListing}
+              >
+                <Text style={styles.deleteCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={confirmDeleteListing}
+                style={styles.deleteConfirmBtn}
+                disabled={isDeletingListing}
+              >
+                {isDeletingListing ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.deleteConfirmText}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -843,5 +925,89 @@ const styles = StyleSheet.create({
     borderBottomColor: '#007782',
     textAlign: 'center',
     minWidth: 120,
+  },
+  cardDeleteBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+    zIndex: 10,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  deleteModalContent: {
+    width: '100%',
+    maxWidth: 380,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+  },
+  deleteModalIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#FDE8E8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  deleteModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 6,
+  },
+  deleteModalText: {
+    fontSize: 14,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 20,
+  },
+  deleteModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    width: '100%',
+  },
+  deleteCancelBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  deleteCancelText: {
+    color: '#374151',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  deleteConfirmBtn: {
+    flex: 1,
+    backgroundColor: '#DC2626',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  deleteConfirmText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 14,
   },
 });
